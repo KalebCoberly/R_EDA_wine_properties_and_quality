@@ -1,0 +1,2339 @@
+# EDA of Vinho Verde Physiochemical Attributes and Quality Ratings
+
+by Kaleb Coberly
+========================================================
+
+<a name="contents"></a>
+
+# Table of Contents
+
+* <a href="#data">The Data Set</a>
+* <a href="#uni_plots">Univariate Plots</a>
+* <a href="#uni_analysis">Univariate Analysis</a>
+* <a href="#bi_plots">Bivariate Plots</a>
+* <a href="#bi_analysis">Bivariate Analysis</a>
+* <a href="#multi_plots">Multivariate Plots</a>
+* <a href="#multi_analysis">Multivariate Analysis</a>
+* <a href="#final_plots">Final Plots and Summary</a>
+* <a href="#reflection">Reflection</a>
+
+
+```{r Packages, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(gridExtra)
+library(diptest)
+library(GGally)
+
+source("tools.R")
+```
+
+```{r Load Data, echo=FALSE}
+# Load the Data into one set.
+white_df = read.csv(file = 'wineQualityWhites.csv')
+red_df = read.csv(file = 'wineQualityReds.csv')
+
+white_df$type = 'white'
+red_df$type = 'red'
+
+wine_df = rbind(white_df, red_df)
+```
+
+<a name="data"></a>
+
+# The Data Set
+
+<a href="#contents">Back to Contents.</a>
+
+This data set was gathered from samples of red and white Vinho Verdes (capitalized after popular usage). Observations include 11 measurements of physiochemical properties and one quality rating (1-10) that is the median of at least three expert ratings. There are 4,898 whites in one CSV file and 1,599 reds in another. [(Paulo Cortez (Univ. Minho), Antonio Cerdeira, Fernando Almeida, Telmo Matos and Jose Reis (CVRVV) @ 2009)](https://repositorium.sdum.uminho.pt/bitstream/1822/10029/1/wine5.pdf)
+
+[See data dictionary](dataDictionary.csv) for units and descriptions. I borrowed descriptions from the [info doc](wineQualityInfo.txt) supplied with data, with modification in some cases.
+
+[See the study](https://repositorium.sdum.uminho.pt/bitstream/1822/10029/1/wine5.pdf) for more on sampling and collection methods.
+
+## Objectives
+
+I wanted to explore as if in preparation for creating a model to predict quality ratings based on physiochemical attributes. However, I did not build that model for this project, as it's simply an intro to EDA in R. For instance, I found that I probably need at least two separate models, one for red Vinho Verdes and one for white Vinho Verdes, and maybe a third, general model for all Vinho Verdes.
+
+I also thought it might be interesting to note the differences between wine types and consider how to classify them.
+
+## Caveats and Background
+
+The chemical properties in this data set include sugar, alcohol, sulphates, salt, and three types of acid (and pH). However, tannin is excluded. Tannin, mostly in seeds and red grape skins, is such an important piece of wine appreciation, especially red wines and [even in rosado Vinho Verde](https://wetravelportugal.com/vinho-verde/). Keep this absence in the data in mind when interpreting how the supplied physiochemical attributes come together to create the tasting experiences that led to the quality ratings.
+
+Vinho Verde is not like most wines. It's bottled sooner after grape harvest. Because it doesn't ferment as long, the wine typically has lower alcohol content. Because microbes don't have as much time to metabolize the acid, the wine is more acidic, giving it a brighter, fresher taste.
+
+Further, while Vinho Verde is technically a style of wine making, not a grape variety, and not strictly a region, the wines in this data come from a handful of grape varieties grown over a three-year period in Minho, known for Vinho Verde. On Portugal's northwest coast, Minho is mild and wet, producing grapes with lower sugar and higher acidity than those grown in the hotter south. [See this article](https://winefolly.com/deep-dive/what-wines-to-drink-from-portugal-by-region/) for context on regional and quality designations in Portugal.
+
+These and other hidden variables undoubtedly bias the data compared to wines in general and limit the generalizability of findings.
+
+Grape variety, farm plot conditions, and other notably absent variables affect the starting physiochemical properties of grapes. The grapes vintners start with influence their choices such as regarding additives and fermentation length. Starting properties and processing methods affect the distributions of each final variable in our data set as well as the distribution of overall structure types (i.e. typical and atypical combinations of attributes). Each harvest is restricted to its own space of possible winecrafting paths and outcomes, some with a greater potential quality rating than others, some with a more economically optimal wine making method, etc.
+
+Also, it may not only be the physiochemical attributes, and their combination (or structure), of the final wine product that determine quality ratings. You might argue that the entire field of typical wine structures (and typical Vinho Verde structures) *interacts with expert tasters' expectations* and thus also influences their ratings.
+
+>**A Note on Language:** When speaking of wine *structure*, I'm speaking of its phenomenological aspects as it relates to wine appreciation (e.g. taste, mouthfeel, etc.) Though overlapping, *structure* is not the same as the physiochemical *properties* of wines as measured by technical instruments and represented in the data here.
+
+>**Another Note on Language:** While I am careful not to draw any erroneous conclusions during analysis, we do know some things about wine making, wine chemistry, wine appreciation, etc. So, I take license to speculate and make educated guesses as I engage the data and analysis, careful not to make any unwarranted claims though I am.
+
+Caveats aside, let's look at the data.
+
+## The Data
+
+The first thing I noticed looking at the table is that, other than the wine type ("red" and "white"), there aren't any nominal variables, nor any obvious ordinal variables other than the quality ranking. Looking more closely at each variable might reveal a variable or two that are interesting candidates for binning and factoring, for instance if a variable is uniformly distributed or polymodal.
+
+```{r echo=FALSE}
+wine_df$type = factor(x = wine_df$type)
+wine_df$quality = factor(x = wine_df$quality, ordered=T)
+summary(wine_df)
+```
+The rest of the values are ratios, having absolute minimums. They are all continuous. Measures of sulfur dioxide (SO2) initially appeared to be integers, but on closer examination, there are some rows with non-integer number values in each of the SO2 columns.
+
+There are about three times as many whites as there are reds.
+
+```{r eval=FALSE, include=FALSE}
+# Are there any non-integer SO2?
+nrow(wine_df[(wine_df$free.sulfur.dioxide /
+                floor(wine_df$free.sulfur.dioxide)) != 1, ])
+nrow(wine_df[(wine_df$total.sulfur.dioxide /
+                floor(wine_df$total.sulfur.dioxide)) != 1, ])
+```
+
+<a name="uni_plots"></a>
+
+# Univariate Plots
+
+<a href="#contents">Back to Contents.</a>
+
+>**Note**: I'm treating this as simultaneous univariate analysis of three data sets: reds, whites, and their superset.
+
+```{r echo=FALSE, message=FALSE}
+fxd_acid_plt = basic_hist(data = wine_df, x = wine_df$fixed.acidity,
+                          x_lbl = 'fixed.acidity')
+vol_acid_plt = basic_hist(data = wine_df, x = wine_df$volatile.acidity,
+                          x_lbl = 'volatile.acidity')
+citric_plt = basic_hist(data = wine_df, x = wine_df$citric.acid,
+                        x_lbl = 'citric.acid')
+sugar_plt = basic_hist(data = wine_df, x = wine_df$residual.sugar,
+                       x_lbl = 'residual.sugar')
+chlor_plt = basic_hist(data = wine_df, x = wine_df$chlorides,
+                       x_lbl = 'chlorides')
+free_sulf_plt = basic_hist(data = wine_df, x = wine_df$free.sulfur.dioxide,
+                           x_lbl = 'free.sulfur.dioxide')
+tot_sulf_plt = basic_hist(data = wine_df, x = wine_df$total.sulfur.dioxide,
+                          x_lbl = 'total.sulfur.dioxide')
+density_plt = basic_hist(data = wine_df, x = wine_df$density,
+                         x_lbl = 'density')
+pH_plt = basic_hist(data = wine_df, x = wine_df$pH, x_lbl = 'pH')
+sulph_plt = basic_hist(data = wine_df, x = wine_df$sulphates,
+                       x_lbl = 'sulphates')
+alc_plt = basic_hist(data = wine_df, x = wine_df$alcohol, x_lbl = 'alcohol')
+qual_plt = ggplot(data = wine_df, aes(x = quality)) +
+  geom_bar(aes(color = type))
+
+grid.arrange(data = fxd_acid_plt, vol_acid_plt, citric_plt, sugar_plt,
+             chlor_plt, free_sulf_plt, tot_sulf_plt, density_plt, pH_plt,
+             sulph_plt, alc_plt, qual_plt)
+```
+
+This graph shows the distributions of all 11 measured physiochemical attributes and quality ranking. The bars represent the counts of both wines. I look at each graph individually below, but first here's an overall analysis.
+
+Again, there are about three times as many whites as there are reds.
+
+Most variables are roughly normally distributed (or chi-squared, or Students' T) or skewed (or exponential) for each type of wine. A possible exception is citric acid in reds, which appears somewhat uniform, though it may just be an optic due to being dwarfed by the white counts. I'll look closer at that.
+
+There are some features that distinguish most whites from most reds, such as total SO2, but even that attribute has quite a bit of overlap between wine types. It doesn't look like using a single variable would allow us to reliably classify any given wine as red or white. Yes, it appears that exceptionally low total SO2 is a strong indication that a wine is red, and that exceptionally high total SO2 is a strong indication that a wine is white. However, moderate levels are found in many reds and whites.
+
+But, we can talk about typical physiochemical attributes of each type of wine as a group. For instance, while both red and white Vinho Verdes typically have very low sugar, there are proportionately more whites with sugar levels above about 10 g / dm^3.
+
+I'm surprised to see similar distributions of alcohol. Most reds typically have higher alcohol content than most whites, but it doesn't appear so in Vinho Verdes.
+
+It's also worth noting that no wines are rated below 3, none above 9, and most are mediocre. This is likely due to the variable being the median of multiple ratings; some wines probably did receive 1s and 10s. And, tasters seem to have slightly preferred whites over reds overall, most often rating whites as 6 and reds as 5. This may not be a significant difference.
+
+Let's take a closer look at the variables, starting with the acids.
+
+### Fixed acidity (tartaric acid)
+
+```{r echo=FALSE, warning=FALSE}
+basic_hist2(data = wine_df, x = wine_df$fixed.acidity, binw = 0.1,
+           breaks = seq(3, 16, 1), limits = c(3.5, 13), x_lbl = 'fixed.acidity')
+```
+
+(This plot omits values above 13.)
+
+Fixed acidity is a measure of tartaric acid. Though naturally occurring, winemakers often add tartaric acid as a preservative and for its tart flavor.
+
+Both reds and whites have a noticeable shelf or plateau between 5 and 5.5 g / dm^3. It may be that a natural level of fixed acidity in some grapes may fall in this range, and some winemakers may have decided not to add any tartaric acid at that level. It may also be a fluke.
+
+Applying a log10 x scale to fixed acidity helps to better center its distribution around its mean of 7.215 g / dm^3 of tartaric acid. It does the same for each type, though reds remain right skewed.
+
+It's sensible to see this as a box plot.
+
+```{r echo=FALSE}
+gplot = ggplot(data = wine_df, aes(x = fixed.acidity)) +
+  geom_boxplot()
+
+fa_gbox = gplot +
+  scale_x_continuous(breaks = seq(3, 16, 1), limits = c(3, 16))
+
+fa_log_gbox = gplot +
+  scale_x_log10(breaks = seq(3, 16, 1), limits = c(3, 16))
+
+grid.arrange(data = fa_gbox, fa_log_gbox)
+```
+
+(Values are limited to 3 to 16.)
+
+Not only does the log10 axis better center the distribution around the mean, but it also leaves fewer outliers (about 80 fewer), extending the third quartile above 10 g / dm^3 tartartic acid. It also creates more outliers on the low end, further balancing the data.
+
+While using a log10 scale undoubtedly helps center further variables, and would aid regression, I refrain from doing so in most cases unless I have a compelling reason.
+
+Here are the boxplots of each type side by side on a standard scale.
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'fixed.acidity',
+                  x_lbl = 'fixed.acidity', breaks = seq(3, 16, 1))
+```
+
+I call this overlapping plot the Jitterbox Violin. I use it on the rest of the variables.
+
+The non-overlapping notches in the boxes indicate that these medians are significantly different. But, there is plenty of overlap in the meat of the distributions.
+
+The box width corresponds to the number of observations in each set relative to the total number of observations in the superset. Even without the jittered data points, you can see that there were more whites than reds because the white box is wider than the red box.
+
+The violin curve width corresponds to the number of observations at each x value relative to the total number of observations in that subset. You can see that white observations are more tightly clustered around their mean than red observations are around their mean because the white violin is thicker than the red violin. So, you can get a more precise sense of the difference between the subsets despite overplotting and different set sizes.
+
+We can say that most reds are commonly more tart than most whites. But, it's not that surprising to find a relatively tart white or a not-so-tart red.
+
+### Volatile acidity (acetic acid, "vinegar")
+
+Now, here's volatile acidity, i.e. acetic acid or "vinegar":
+
+```{r echo=FALSE}
+basic_hist2(data = wine_df, x = wine_df$volatile.acidity, binw = 0.01,
+            breaks = seq(0, 2, 0.1), x_lbl = 'volatile.acidity')
+```
+
+Like fixed acidity, volatile acidity is right-skewed for both reds and whites. But, reds are a little more shifted right than whites here than they are in fixed acidity.
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'volatile.acidity',
+                  breaks = seq(0, 2, 0.1), x_lbl = 'volatile.acidity')
+```
+
+The whiskers overlap with the boxes, but the boxes don't, unlike fixed acidity. We can say that it's more uncommon to find a white as vinegary as a red than it is to find a white as tart as a red.
+
+### Citric acid
+
+```{r echo=FALSE, warning=FALSE}
+basic_hist2(data = wine_df, x = wine_df$citric.acid, x_lbl = 'citric.acid',
+            binw = 0.01, limits = c(0, 1), breaks = seq(0, 1, 0.1))
+```
+
+This graph omits values above 1 g / dm^3.
+
+Whites are somewhat normally distributed. Reds are right skewed and stretched out, possibly polymodal. I want to look at reds more closely on this variable.
+
+There's an interesting stack of wines at 0.49 g / dm^3. I don't know why that would be the case. Maybe it's due to an industry standard or instrumentation errors.
+
+Citric acid occurs naturally in grapes and gets used up in the fermentation process. It's vital to fermentation, but winemakers also add it to improve flavor, making it more *fresco*. Perhaps in the case of Vinho Verdes, taste expectations create more incentive to lively up a blander wine in order to make your mouth water more.
+
+However, too much will overfeed unwanted microbes. Citric acid concentration in Vinho Verde at 0.50 g / dm^3 and above may be known to have diminishing returns and/or produce too many unwanted microbes. Perhaps there is a certification or regulation standard at play.
+
+There's a similar, smaller spike at 0.74, another round threshold.
+
+[Click for more.](https://www.calwineries.com/learn/wine-chemistry/wine-acids/citric-acid)
+
+Before I look at citric acid in just reds, here it is as a jitterbox violin, with yellow verticals added at quarter-gram thresholds:
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'citric.acid',
+                  x_lbl = 'citric.acid', breaks = seq(0, 1.8, 0.1)) +
+  geom_vline(xintercept = 0.00, color = 'yellow') +
+  geom_vline(xintercept = 0.24, color = 'yellow') +
+  geom_vline(xintercept = 0.49, color = 'yellow') +
+  geom_vline(xintercept = 0.74, color = 'yellow') +
+  geom_vline(xintercept = 0.99, color = 'yellow') +
+  geom_vline(xintercept = 1.24, color = 'yellow')
+```
+
+Based on the more even distribution of citric acid among reds, you might guess that the structure of reds allows for more room to play with citric acid. For instance, different levels of drying tannins might complemented differing levels of mouthwatering citric acid.
+
+I wonder if naturally occurring citric acid in reds is more varied than in whites. Or, do winemakers add more variable amounts of citric acid to reds to aid fermentation?
+
+Based on the the relatively high numbers of red Vinho Verdes that have near-zero and 0.49 g / dm^3, you might infer that many makers choose not to add any more citric acid than necessary to support fermentation (if any), and many others who add it for flavor choose to bring it to just under 0.5 g / dm^3.
+
+Check out the clustering around each threshold (yellow lines) in both reds and whites above. Now look again below at how these thresholds punctuate the otherwise unpronounced distribution in reds.
+
+```{r echo=FALSE, warning=FALSE}
+ggplot(data = subset(wine_df, type == 'red'), aes(x = citric.acid)) +
+  geom_vline(xintercept = 0.00, color = 'yellow') +
+  geom_vline(xintercept = 0.12, color = 'yellow') +
+  geom_vline(xintercept = 0.24, color = 'yellow') +
+  geom_vline(xintercept = 0.37, color = 'yellow') +
+  geom_vline(xintercept = 0.49, color = 'yellow') +
+  geom_vline(xintercept = 0.62, color = 'yellow') +
+  geom_vline(xintercept = 0.74, color = 'yellow') +
+  geom_histogram(binwidth = 0.001) +
+  scale_x_continuous(breaks = seq(0, 1, 0.05), limits = c(0, 0.8)) +
+  geom_freqpoly(aes(color = type), binwidth = 0.02)
+```
+
+This graph cuts out values above 0.8 g / dm^3. This time the yellow lines are at 0.125 g / dm^3 intervals representing ostensible peaks and troughs.
+
+It looks like there's a similar spike at 0.24 g / dm^3 citric acid in reds, another round threshold on the quarter-gram, and another peak just above 0 at 0.02 g / dm^3. There also seem to be less-pronounced troughs roughly halfway between the peaks. It's roughly polymodal in a way that suggests distinct styles of reds.
+
+However, this precise spacing of peaks may be due to varied precision of instrumentation and/or methods. For instance, while the data in this set was presumably gathered with consistent precision (having been [gathered at the same certification site with the same methods](https://repositorium.sdum.uminho.pt/bitstream/1822/10029/1/wine5.pdf)), it may be common for some winemakers to use less precise instruments during production when deciding how much citric acid to add or monitoring it as an indicator of fermentation. This would result in multiple distributions around evenly incremented target levels, as we see here.
+
+Let's run Hartigan's dip test to detect deviation from unimodality.
+
+```{r echo=FALSE}
+# dip(x = red_df$citric.acid, full.result = T, min.is.0 = T)
+dip.test(x = red_df$citric.acid)
+```
+
+We can conclude (p < 2.2e-16) that the distribution of citric acid in red Vinho Verdes is marginally non-unimodal (D = 0.025097). See the following example (taken from R documentation on diptest::dip.test) with a similar D value.
+
+```{r echo=FALSE}
+x <- c(rnorm(500), rnorm(500) + 3)
+plot(density(x)); rug(x)
+## border-line bi-modal ...  BUT (most of the times) not significantly:
+dip.test(x)
+```
+
+And, here's citric acid in reds using the same plot style. It has a sparser rug but similar degree of contour.
+
+```{r echo=FALSE}
+plot(density(red_df$citric.acid)); rug(red_df$citric.acid)
+```
+
+I'll create a new variable that factors citric acid into five levels. This variable (citric.range) will divide values at even troughs between the peaks, every quarter gram starting at 0.125 g / dm^3. This will approximate these ostensible target levels and may help predict quality ratings when interacting with the other variables.
+
+But, because the peaks are so precisely at round threshold values, I'll create another factor (citric.thresh) that divides citric acid into levels at the peaks (0, 0.25, 0.5, 0.75, 1, and >1). This may or may not have more predictive power than citric.range.
+
+Here's a summary count of observations at each level.
+
+```{r echo=FALSE}
+wine_df$citric.range = cut(x = wine_df$citric.acid,
+                           breaks = c(-1, 0.125, 0.375, 0.625, 0.875,
+                                      max(wine_df$citric.acid)+1),
+                           right = F, ordered_result = T)
+wine_df$citric.thresh = cut(x = wine_df$citric.acid,
+                            breaks = c(-1, 0.25, 0.5, 0.75, 1,
+                                      max(wine_df$citric.acid)+1),
+                            right = F, ordered_result = T)
+summary(subset(wine_df, select = c(citric.range, citric.thresh)))
+```
+
+### pH
+
+Now that we've covered specific acids, what about total acidity?
+
+```{r echo=FALSE}
+basic_hist2(data = wine_df, x = wine_df$pH, x_lbl = 'pH', binw = 0.01,
+           breaks = seq(2, 4, 0.1))
+```
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'pH', x_lbl = 'pH',
+                  breaks = seq(2, 4, 0.1))
+```
+
+Reds are typically less acidic than whites. This is somewhat counterintuitive to our finding that reds typically have more tartaric and acetic acids than whites, whereas whites only typically have more citric acid. But, other factors go into the total acidity.
+
+There's something curious about whites here, though. A bit right-skewed, there's a subtle hump in the downward slope on the right, suggesting bimodality.
+
+Let's try a dip test to measure the degree of deviation from unimodality.
+
+```{r echo=FALSE}
+# dip(white_df$pH, full.result = T, min.is.0 = T)
+dip.test(white_df$pH)
+```
+
+The results are fairly certain (p < 2.2e-16) that the distribution is only very slightly non-unimodal if at all (D = 0.016742). This doesn't tell me anything I didn't already know.
+
+It is good to keep in mind, though, that it's possible that we're dealing with multiple populations of whites (e.g. distinct grapes, distinct fermentation styles, distinct harvest times, etc.) or some interaction with another variable or set of variables.
+
+### Chlorides
+
+Let's look at chlorides (salt), the following graph leaving out values above 0.2 g / dm^3.
+
+```{r echo=FALSE, warning=FALSE}
+basic_hist2(data = wine_df, x = wine_df$chlorides, x_lbl = 'chlorides',
+           binw = 0.001, limits = c(0, 0.2), breaks = seq(0, 0.2, 0.02))
+```
+
+Other than long, skinny right tails, chlorides distributions are centered close to the means for each type of wine. Reds typically have higher concentrations. I can certainly think of some syrahs that have tasted salty.
+
+There's an interesting double-peak in whites, though.
+
+```{r echo=FALSE}
+dip.test(white_df$chlorides)
+```
+
+Another reminder that we may be dealing with multiple populations of whites. Though the peaks are distinct, the trough between them is not low enough for me to factor this variable based on two distributions.
+
+Let's look at a boxplot to identify outliers.
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'chlorides', x_lbl = 'chlorides',
+                  breaks = seq(0, 0.6, 0.05))
+```
+
+At least 80% of the range is in outlier territory, which is curious. I wonder if higher chloride works well in rare cases, or if it's harder to control, or just doesn't have much of an effect and is therefore ignored by winemakers.
+
+I'll make two bi-level factors out of chlorides (wht.chlor, red.chlor), splitting the high outliers from the rest of the observations. Here's a summary of these new variables:
+
+```{r echo=FALSE}
+red.chlor_bounds = get_out_bounds(wine_df[wine_df$type == 'red', 'chlorides'])
+wine_df = wine_df %>%
+  mutate(red.chlor = factor(x = ifelse(chlorides <= red.chlor_bounds[2], 0, 1),
+                            labels = c('norm', 'up_out'), ordered = T))
+
+wht.chlor_bounds = get_out_bounds(wine_df[wine_df$type == 'white',
+                                          'chlorides'])
+wine_df = wine_df %>%
+  mutate(wht.chlor = factor(x = ifelse(chlorides <= wht.chlor_bounds[2], 0, 1),
+                            labels = c('norm', 'up_out'), ordered = T))
+
+summary(subset(wine_df, select = c(wht.chlor, red.chlor)))
+```
+
+>**Note** The label "norm" is a misnomer. It includes lower outliers, but they are few and not relatively far from the norm.
+
+### Free sulfur dioxide (free SO2)
+
+```{r echo=FALSE, warning=FALSE}
+basic_hist2(data = wine_df, x = wine_df$free.sulfur.dioxide,
+            x_lbl = 'free.sulfur.dioxide', binw = 1, limits = c(0, 100),
+            breaks = seq(0, 100, 5))
+```
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'free.sulfur.dioxide',
+                  x_lbl = 'free.sulfur.dioxide', breaks = seq(0, 300, 20))
+```
+
+This histogram omits values above 100 mg / dm^3, which cuts out about 60% of the range. But, most of that upper range is empty, so I won't bother factoring this variable in the same way I did with chlorides.
+
+You see more free SO2 in whites as a group than in reds. SO2 inhibits the production of acetic acid and microbial growth. Adding more SO2 to whites may be a stylistic choice by the winemakers, since acetic acid is useful for balancing the tannin in reds but should be limited in whites. Likewise, SO2 offers an alternative antimicrobial treatment to tartartic acid which has a flavor that is often better placed in a red than a white. [Click for more.](http://www.diwinetaste.com/dwt/en2012043.php)
+
+In fact, [SO2 can rob reds of their colors, while it prevents oxidative browning (and scent) that would be more noticeable in whites](https://www.calwineries.com/learn/wine-chemistry/chemical-components-of-wine/sulfur-dioxide#:~:text=The%20Role%20of%20Sulfur%20Dioxide%20in%20Wine%20A,or%20less%20required%20after%20malolactic%20fermentation%20is%20complete.).
+
+As [the info document supplied with this data set](wineQualityInfo.txt) points out, you're also more likely to taste and smell sulfur at free SO2 levels above 50 ppm (roughly 50 mg / dm^3). In my opinion, I would find sulfur more offensive in a red than a white.
+
+I'll factor this into a bi-level variable (free.SO2) split at 50 mg / dm^3, 0 for values <= 50, 1 for values > 50. Here's a count of them:
+
+```{r echo=FALSE}
+# wine_df$free.SO2 = cut(x = wine_df$free.sulfur.dioxide,
+#                        breaks = c(0, 50, max(wine_df$free.sulfur.dioxide)+1),
+#                        right = F, ordered_result = T)
+wine_df = wine_df %>%
+  mutate(free.SO2 = factor(x = ifelse(free.sulfur.dioxide <= 50, 0, 1),
+                           ordered = T))
+summary(wine_df$free.SO2)
+```
+
+### Total sulfur dioxide
+
+Since free SO2 becomes bound SO2 when it does its antioxidant job and when it robs reds of color, total SO2 (i.e. free SO2 + bound SO2) might inform a model about how much work SO2 has done (good and bad).
+
+Here is total SO2 below, excluding values above 275 mg / dm^3.
+
+```{r echo=FALSE, warning=FALSE}
+basic_hist2(data =wine_df, x = wine_df$total.sulfur.dioxide,
+            x_lbl = 'total.sufur.dioxide', binw = 2, limits = c(0, 275),
+            breaks = seq(0, 280, 20))
+```
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'total.sulfur.dioxide',
+                  x_lbl = 'total.sufur.dioxide', breaks = seq(0, 460, 20))
+```
+
+There's an even more drastic difference between reds and whites here.
+
+Mean SO2 jumped much higher in whites than in reds when bound SO2 was added, indicating that it gets used up more in whites. This must be at least in part because so much more SO2 is usually added to whites.
+
+### Bound sulfur dioxide
+
+I'm going to make a new variable (bound.SO2) that is simply the calculated value of bound SO2 (i.e. total SO2 - free SO2). This may prove to be more directly informative than the interaction of free SO2 and total SO2.
+
+```{r echo=FALSE}
+wine_df$bound.SO2 = wine_df$total.sulfur.dioxide - wine_df$free.sulfur.dioxide
+summary(wine_df$bound.SO2)
+```
+
+```{r echo=FALSE, warning=FALSE}
+basic_hist2(data = wine_df, x = wine_df$bound.SO2, x_lbl = 'bound.SO2',
+            binw = 1, breaks = seq(0, 250, 25), limits = c(0, 250))
+```
+
+(Values above 250 mg / dm^3 excluded.)
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'bound.SO2', x_lbl = 'bound.SO2',
+                  breaks = seq(0, 360, 20))
+```
+
+SO2 has been a lot busier in whites than in reds.
+
+### Free SO2 per bound SO2
+
+I'll also make a variable of the ratio of free to bound SO2 (f_by_b.SO2 = free.sulfur.dioxide / bound.SO2). That may be informative here and in later analysis and modeling.
+
+```{r echo=FALSE}
+wine_df$f_by_b.SO2 = wine_df[ , 'free.sulfur.dioxide'] /
+                  wine_df[ , 'bound.SO2']
+summary(wine_df$f_by_b.SO2)
+```
+
+```{r echo=FALSE, warning=FALSE}
+basic_hist2(data = wine_df, x = wine_df$f_by_b.SO2, x_lbl = 'f_by_b.SO2',
+            binw = 0.025, breaks = seq(0, 3, 0.25), limits = c(0, 3))
+```
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'f_by_b.SO2', x_lbl = 'f_by_b.SO2',
+                  breaks = seq(0, 6, 0.5))
+```
+
+Reds and whites are more closely aligned in this ratio, suggesting that the amount of SO2 used (bound) is typically proportional to the amount of SO2 added independent of wine type.
+
+There are also interesting spikes in the number of observations of red wines at 1:1, 1:1.5, and 1:2 ratios of free SO2 to bound SO2. Maybe these are standard shortcut indicators to winemakers to halt fermentation.
+
+I could make factored variables similar to those I created for citric acid, but I'll skip it in the interest of moving on.
+
+I've definitely strayed into bivariate analysis, but it just makes sense to create these calculated variables now as a way to understand the underlying variables better. Exploration is iterative, not linear.
+
+### Sulphates
+
+Sulphates are added to produce SO2 gas (free SO2). This measures the amount of additive that did not become gas in the first place and thus did not go on to bind to anything and do "work."
+
+```{r echo=FALSE}
+basic_hist2(data = wine_df, x = wine_df$sulphates, x_lbl = 'sulphates',
+            binw = 0.01, breaks = seq(0, 2, 0.1))
+```
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'sulphates', x_lbl = 'sulphates',
+                  breaks = seq(0, 2, 0.1))
+```
+
+These plots are in g / dm^3, whereas SO2 is in mg / dm^3.
+
+Unlike SO2, whites typically have less sulphates than reds. Is there something about red must (must is the pre-fermentation mix) or typical red fermentation conditions that inhibits activation of sulphates into free SO2, compared to whites?
+
+### Sulphates per total SO2
+
+I want to look at a ratio of sulphates to total SO2. Here's that new variable (sulph.by.SO2 = sulphates / total.sulfur.dioxide, expressed as g / dm^3).
+
+```{r echo=FALSE}
+wine_df$sulph.by.SO2 = wine_df[ , 'sulphates'] /
+                    (wine_df[ , 'total.sulfur.dioxide'] / 1000)
+summary(wine_df$sulph.by.SO2)
+```
+
+```{r echo=FALSE, warning=FALSE}
+basic_hist2(data = wine_df, x = wine_df$sulph.by.SO2, x_lbl = 'sulph.by.SO2',
+           binw = 0.1, limits = c(0, 65), breaks = seq(0, 65, 5))
+```
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'sulph.by.SO2', x_lbl = 'sulph.by.SO2',
+                  breaks = seq(0, 115, 5))
+```
+
+Reds are certainly activating proportionately less SO2.
+
+### Residual sugar
+
+Let's dig into residual sugar.
+
+```{r echo=FALSE, warning=FALSE}
+basic_hist2(data = wine_df, x = wine_df$residual.sugar,
+            x_lbl = 'residual.sugar', binw = 0.1, limits = c(0, 20),
+            breaks = seq(0, 25, 1))
+```
+
+This histogram leaves out values above 20 g / dm^3.
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'residual.sugar',
+                  x_lbl = 'residual.sugar', breaks = seq(0, 70, 5))
+```
+
+Residual sugar is incredibly right-skewed for both types of wine. That said, it looks like it might be most common for whites to have about 1-3 g / dm^3, while it's uncommon to find a red under 1.5 g / dm^3. In fact, the average sugar level in whites is well into upper outlier territory for reds.
+
+Residual sugar is a function of how much sugar the must began with before fermentation, how much sugar was added, and how much it fermented (i.e. how fast and how long it fermented). We know that Vinho Verde (i.e. "young wine") does not ferment as long as many wines, and often has lower alcohol (the product of sugar fermentation) as we'll see. We also know that the grapes in mild Minho are typically going to have lower levels of sugar and higher acidity, and that Vinho Verdes tend to be more acidic in general, especially the whites.
+
+Perhaps the drastic peak at low levels represents natural levels using typical grapes and fermentation methods. And, perhaps the elaborate tail represents a wide range of additive sugar treatments and fermentation times to manage acidity and alcohol levels -- more room to play (and to mitigate).
+
+The transition in whites from below 3 g / dm^3 to above is so sharp and the tail so thick that it almost seems bimodal. In fact, the long, fat tail seems to have polymodality in and of itself, with alternating thin and thick distribution. Maybe we're dealing with two or more very distinct grapes, fermentation methods, harvest times, or something else.
+
+Let's look at that fat tail under a log scale.
+
+```{r echo=FALSE, warning=FALSE}
+gplot + aes(x = residual.sugar) +
+  geom_histogram(binwidth = 1/100) +
+  geom_freqpoly(aes(color = type), binwidth = 1/100) +
+  scale_x_log10()
+```
+
+And, here's just the tail of whites, with and without a log scale:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+wht_sug_jbv =
+  jitter_box_violin(data = white_df[white_df$residual.sugar > 3, ],
+                    x = 'residual.sugar', x_lbl = 'residual.sugar',
+                    limits = c(3,25), breaks = seq(3, 25, 1))
+wht_sug_log_jbv =
+  jitter_box_violin(data = white_df[white_df$residual.sugar > 3, ],
+                    x = 'residual.sugar', x_lbl = 'residual.sugar') +
+  scale_x_log10(limits = c(3,25), breaks = seq(3, 25, 1))
+
+grid.arrange(wht_sug_jbv, wht_sug_log_jbv, ncol = 1)
+```
+
+Residual sugar appears to be at least bi-modal for whites, but not for reds. As seen in the full plot, observations relatively thin at about 5.5 and 9.5 g / dm^3, and maybe also at about 16.5 g / dm^3. This suggests several modes.
+
+This variable is a good candidate to check for interaction with other variables when constructing a regression model.
+
+Let's check the dip test for non-unimodality.
+
+```{r echo=FALSE}
+# dip(x = white_df$residual.sugar, full.result = T, min.is.0 = T)
+dip.test(x = white_df$residual.sugar)
+dip.test(x = white_df[white_df$residual.sugar > 3, ]$residual.sugar)
+```
+
+We have similar results to the dip test on pH in whites: only slightly non-unimodal, if at all. But, the transition between the hump and the tail is so striking, I'm not going to ignore it. The test is clearly limited.
+
+I'll create a new five-level factor (sugar) split at 3, 5.5, 9.5, and 16.5 g / dm^3. That way I can treat each level separately, or I can split them into two groups at the most pronounced break of 3 g / dm^3.
+
+Here are the counts and proportions of observations at each level for all wines, whites, and reds, respectively.
+
+```{r echo=FALSE, warning=FALSE}
+# wine_df = wine_df %>% mutate(sugar = factor(ifelse(residual.sugar <= 3, 0, 1)))
+
+wine_df$sugar =
+  cut(x = wine_df$residual.sugar,
+      breaks = c(0, 3, 5.5, 9.5, 16.5, (max(wine_df$residual.sugar) + 1)),
+      ordered_result = T)
+summary(wine_df$sugar)
+
+plt0 = ggplot(data = wine_df) +
+  geom_bar(aes(x = sugar, y = stat(prop), group = 1))
+pltw = ggplot(data = wine_df[wine_df$type == "white", ]) +
+  geom_bar(aes(x = sugar, y = stat(prop), group = 1))
+pltr = ggplot(data = wine_df[wine_df$type == "red", ]) +
+  geom_bar(aes(x = sugar, y = stat(prop), group = 1))
+
+grid.arrange(plt0, pltw, pltr, ncol = 2)
+```
+
+### Alcohol
+
+Let's check out the product of fermented sugar, alcohol:
+
+```{r echo=FALSE}
+basic_hist2(data = wine_df, x = wine_df$alcohol, x_lbl = 'alcohol', binw = 0.1,
+            breaks = seq(7, 16, 0.5))
+```
+
+Units are percent by volume (ABV).
+
+Unlike typical wines, Vinho Verde reds and whites have similar ranges of alcohol content, and it's low. Right-skewed, they peak around 9% with medians a little over 10%.
+
+Like previous variables (citric acid and sugar), alcohol very slightly suggests a frequency with diminishing amplitude (though sugar has an increasing frequency as well).
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'alcohol', x_lbl = 'alcohol',
+                  breaks = seq(7, 16, 0.5))
+```
+
+```{r echo=FALSE}
+print('Red alcohol summary:')
+summary(wine_df$alcohol[wine_df$type=='red'])
+print('White alcohol summary:')
+summary(wine_df$alcohol[wine_df$type=='white'])
+```
+
+Lower alcohol levels are due to earlier bottling and lower sugar content of Minho grapes. The similar distribution shape might be due to the similar fermentation time of red and white Vinho Verdes, whereas [winemakers typically allow other reds to develop more alcohol content to balance out their higher tannin content.](https://www.masterclass.com/articles/learn-about-alcohol-content-in-wine-highest-to-lowest-abv-wines#does-white-wine-or-red-wine-have-higher-alcohol-content)
+
+It's worth noting that there are few outliers, none in whites.
+
+### Density
+
+Density contributes to the body or "mouthfeel" of a wine, with acidity and sugar lending "weight," and alcohol thinning the wine for instance.
+
+```{r echo=FALSE, warning=FALSE}
+basic_hist2(data = wine_df, x = wine_df$density, x_lbl = 'density',
+            binw = 0.0001, limits = c(0.9865, 1.005),
+            breaks = c(0.9865, 1.005, 0.002))
+```
+
+This histogram cuts off the few values above 1.0050 g / cm^3.
+
+```{r echo=FALSE}
+jitter_box_violin(data = wine_df, x = 'density', x_lbl = 'density',
+                  breaks = seq(0.985, 1.04, 0.005))
+```
+
+We see that the wines are overall less dense than water, which is a hair less than 1 g / cm^3. Surprisingly, the reds are typically more dense than most whites. Yet, a large portion of whites are sugarier than most reds in this data set. Perhaps SO2 or chlorides are driving this surprise. We might get more clarity in bivariate and multivariate analysis.
+
+### Quality ratings
+
+Let's take a look at the final variable, quality ratings.
+
+```{r echo=FALSE}
+qual_plt
+```
+
+I'll make a discrete numeric variable out of this factor variable, to try coercing it into correlation and regression (if I were going to build a prediction model), and for more plotting options. This is a relative scale *per se* after all, not simply a rank, plus it's an aggregate figure.
+
+Here's a summary of the new variable:
+
+```{r echo=FALSE}
+wine_df$qual = as.numeric(as.character(x = wine_df$quality))
+summary(wine_df$qual)
+```
+
+Let's see it as a jitterbox violin now.
+
+```{r echo=FALSE, message=FALSE}
+jitter_box_violin(data = wine_df, x = 'qual', x_lbl = 'qual',
+                  breaks = seq(3, 9, 1))
+```
+
+It looks like tasters tended to rate white Vinho Verdes higher, giving whites a little more 6s than 5s, and giving several 9s. Whereas, tasters gave reds a slightly more 5s than 6s, and no 9s. That said, they have the same median rating of 6. Vinho Verde is not the best way to treat a red grape, in my opinion, but it's a good way to handle sour grapes.
+
+You might say that tasters thought Vinho Verde a mediocre wine in general. You might also say that each taster's scale is constructed relative to their past experience (largely mediated by social conventions) in such a way that their ratings must necessarily be normally distributed by definition. Certainly, expert tasters must adjust their evaluation heuristic based on the type of wine in question. So, perhaps "mediocre" is too negative in connotation. "Decent" might be more appropriate.
+
+```{r echo=FALSE}
+# Create new type sets with new variables for shorthand reference.
+red_mod_df = wine_df[wine_df$type == 'red', ]
+wht_mod_df = wine_df[wine_df$type == 'white', ]
+```
+
+<a name="uni_analysis"></a>
+
+# Univariate Analysis
+
+<a href="#contents">Back to Contents.</a>
+
+A recap before moving on to bivariate analysis.
+
+### What is the structure of your dataset?
+
+```{r echo=FALSE}
+print(
+  "Red set dimensions, including the ID variable, before adding variables:"
+)
+dim(red_df)
+print("")
+
+print(
+  "White set dimensions, including the ID variable, before adding variables:"
+)
+dim(white_df)
+print("")
+
+print(
+  "Super set dimensions, including the ID variable, after adding variables:"
+)
+dim(wine_df)
+```
+
+### What is/are the main feature(s) of interest in your dataset?
+
+By far, the two most interesting features are residual sugar and citric acid. Sugar iss interesting for the way its polymodality in whites hints at distinct styles. Citric acid is interesting for the way wines cluster around quarter-gram intervals, suggesting target levels and/or certification standards, and/or instrumentation inconsistencies.
+
+I created factors out of these ranges. I might have created another variable that measured the distance from a quarter-gram threshold in citric acid, i.e. measures the distance to the presumed target and thus the success of the winemaker in reaching the intended outcome (e.g. (citric acid * 100) % 25), but it was time to move on.
+
+Of course, the million-dollar questions are: What drives quality ratings? That is, which features and feature interactions can predict a higher rating? And, is it the same for both reds and whites? While I explore these questions in further analysis below, I don't build a model to better answer them.
+
+You also see more SO2 in whites than in reds, managing the production of acetic acid, microbial growth, and oxidation. You're more likely to taste and smell SO2 in whites due to higher free SO2. Though whites tend to have more free SO2 left over and unused than reds, they appear to have typically put more of the SO2 to use as well, leaving more bound SO2. Interestingly, reds typically contain more sulphates, which seems to be the additive that creates free SO2; proportionately less sulphates were ever activated into SO2 in the first place in reds.
+
+Unlike typical wines, Vinho Verde reds and whites have similar ranges of alcohol content, and lower in general than typical wines. The lower levels might be due to earlier bottling and less sugary grapes. The similar distribution shape might be due to the similar fermentation time of red and white Vinho Verdes, whereas [winemakers typically allow other reds to develop more alcohol content to balance out their higher tannin content.](https://www.masterclass.com/articles/learn-about-alcohol-content-in-wine-highest-to-lowest-abv-wines#does-white-wine-or-red-wine-have-higher-alcohol-content)
+
+Unsurprisingly, our expert tasters tended to rate white Vinho Verdes higher than red Vinho Verdes. The Vinho Verde process doesn't seem like an optimal way to bring out the best in a red grape.
+
+Also unsurprisingly, as any beginning wine appreciator would expect, the reds will typically be more vinegary and/or tart, and sometimes saltier than whites. Whites will typically be more citrusy and sweeter than reds. And, it is known that Vinho Verdes are generally more acidic and less sweet than most wines.
+
+### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+
+In addition to the unique wine structure and expectations of Vinho Verdes as a class of wines, and the differences in structure and expectations between reds and whites, I wouldn't be surprised if there were unique substyles of white Vinho Verdes and red Vinho Verdes. The stark polymodality of residual sugar in whites is the strongest evidence of multiple populations within whites.
+
+The SO2 variables and acids (along with sugar and alcohol themselves) provide insight into the extent of fermentation and other chemical processes, like a timer or a speedometer, which may indicate when things didn't go as planned, and/or may indicate different styles. The well-known interaction of the physiochemical attributes in the data, as well as others not included, may form distinct sets of interactions, each with their own distinct set of coefficients for predicting quality ratings.
+
+### Did you create any new variables from existing variables in the dataset?
+
+I created ten new variables to possibly aid type classification and/or quality prediction:
+
+* type: (factor) "red" and "white".
+
+* citric.range: (factor) indicating quarter-gram / dm^3 intervals falling roughly at the troughs of possible distinct modes in the red data.
+
+* citric.thresh: (factor) like citric.range but shifted an eighth of a gram to fall at the peaks of possible modes that fall precisely at round quarter-gram / dm^3 values and act like threshold or target values.
+
+* red.chlor: (factor) 'norm' for chloride values below the upper outlier range for reds, 'up_out' for upper outliers (x > 0.1174665 g / dm^3).
+
+* wht.chlor: (factor) 'norm' for chloride values below the upper outlier range for whites, 'up_out' for upper outliers (x > 0.06677236 g / dm^3).
+
+* free.SO2: (factor) 0 denotes free SO2 values less than or equal to 50 mg / dm^3, and 1 denotes values above 50.
+
+* bound.SO2: (continuous) the difference between free.sulfur.dioxide and total.sulfur.dioxide, ostensibly the amount of SO2 that has done some "work" in the wine (good or bad). (mg / dm^3)
+
+* sugar: (factor) ranges (g / dm^3) centered on possible modes in whites data, with the first mode being most strikingly different from the rest (split at 3, 5.5, 9.5, and 16.5 g / dm^3).
+
+### Of the features you investigated, were there any unusual distributions? Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+
+Most variables are right-skewed. I opted to leave outliers alone for now. I want to view them in bivariate and multivariate plots. I may decide to trim them, top code them, or set them to mean/median/random values before performing regression (if I were to do so). In some cases, I created a new factored variable which discretized outliers.
+
+Applying a log scale to some of the variables does help center their distribution, but I didn't include that in the analysis above. Again, I will apply log scales (and otherwise) as needed once I see how the variables interact in further analysis.
+
+In at least a few cases, there was marginal polymodality. I factored a couple of these variables around their suspected modes to allow each mode to interact independently with other variables. In the case of citric acid in reds, I observed peaks at precise intervals, with one possible explanation being instrumentation or method inconsistencies. I factored this at the peaks and the troughs between modes.
+
+<a name="bi_plots"></a>
+
+# Bivariate Plots Section
+
+<a href="#contents">Back to Contents.</a>
+
+```{r eval=FALSE, message=FALSE, include=FALSE}
+ggpairs(data = wine_df, columns = c(2:16, 19:length(wine_df)),
+  lower = list(continuous = wrap(funcVal = "points", shape = I('.'))),
+  upper = list(combo = wrap(funcVal = "box", outlier.shape = I('.'))),
+  axisLabels = 'internal')
+```
+
+```{r eval=FALSE, message=FALSE, include=FALSE}
+ggpairs(data = wht_mod_df, columns = c(2:16, 18:length(wht_mod_df)),
+  lower = list(continuous = wrap("points", shape = I('.'))),
+  upper = list(combo = wrap("box", outlier.shape = I('.'))),
+  axisLabels = 'internal')
+```
+
+```{r eval=FALSE, message=FALSE, include=FALSE}
+ggpairs(data = red_mod_df, columns = c(2:17, 19:length(red_mod_df)),
+  lower = list(continuous = wrap("points", shape = I('.'))),
+  upper = list(combo = wrap("box", outlier.shape = I('.'))),
+  axisLabels = 'internal')
+```
+
+## Correlations
+
+Let's start off by heatmapping the correlations between numeric variables. I'll start with the whole set, which whites will disproportionately drive.
+
+>**Note**: The variable names are shifted left to avoid overlap with the matrix and coefficient values, so names are not centered over their columns.
+
+```{r echo=FALSE}
+no_cor_cols =
+  c('X', 'quality', 'type', 'citric.range', 'citric.thresh', 'sugar',
+    'wht.chlor', 'red.chlor', 'free.SO2')
+
+basic_cor(data = wine_df[ , !(names(wine_df) %in% no_cor_cols)],
+          name = 'All Wines')
+```
+
+>**Note**: While it is true that correlation does not imply causation, we do know some things about wine chemistry and appreciation. This knowledge informs my interpretation of some correlations. At times, the correlation is merely confirmation of known dynamics, and other times wine knowledge lends plausible explanations to the correlations observed. Still other times, I more loosely speculate. I try to keep my language appropriate in each case.
+
+If we're picking a single variable to predict quality ratings, it would be alcohol. Though only a moderate correlation, it is quality's strongest. Runners up in correlation to quality rating are weak and negative: density and volatile acidity. You could say that tasters very slightly prefer lighter, less vinegary Vinho Verdes, but mostly the boozier the better. Maybe alcohol's bittersweet heat balances an acidic wine like Vinho Verde which is short on alcohol in the first place. Maybe this is coincidence, and it could due to underlying factors that stall fermentation.
+
+Certainly alcohol plays a central role in both the mouthfeel (by thinning) and the flavor ("heat" that balances acidic wines), and it also acts as an indicator of how the overall fermentation process went. You would expect such a central variable to be strongly associated to quality ratings, but I wouldn't be surprised if its inebriating effect directly influences tasters' "amicability" toward the wine as well.
+
+Even trivial exposure to alcohol may trigger a conditioned response. I can imagine a study to test this in which participants were asked to taste and rate wines followed by rating unrelated things, like paintings. Some participants would taste high-alcohol wine, some would taste low-alcohol wine, some would taste grape juice, and some would not taste anything, but all would rate the same paintings.
+
+I wonder how alcohol interacts with its weakly correlated variables (acids, and sulphates/SO2s) to predict quality rating. I'll return to this in the multivariate section.
+
+The strongest overall correlations are between bound and total SO2 and between free and total SO2, which is no surprise as they are functions of each other. What is interesting is that, while total SO2 is almost perfectly positively correlated to bound SO2, total SO2 and free SO2 are not that closely correlated, though it is a strong correlation. Why? Do winemakers monitor free SO2 as one of the indicators of when to bottle, thus capping it in a way that is independent to total and bound levels?
+
+As expected, density correlates negatively to alcohol, while density correlates moderately positively with sugar. There remains the puzzle of why reds are more dense than whites in this set. Roughly half of whites have more sugar than the vast majority of reds, about a quarter of whites have the same amount of sugar as most reds, and alcohol levels are similar. A plausible answer is found in the fact that fixed acidity and chlorides affect density, as both have moderate positive correlations with density, and both of which are found in higher concentrations in reds. I know salt adds density to water, and apparently tartaric acid does as well.
+
+Sugar is negatively correlated with alcohol, alcohol being the product of fermented sugar, and leftover sugar indicating halted fermentation. Interestingly, sugar is moderately positively correlated with SO2 levels. This might be due to SO2's inhibition on fermentation. As more sugar is added, speeding up fermentation and other microbial growth, more SO2 is required to moderate the microbial and chemical processes.
+
+Neither citric acid nor pH are even moderately correlated to almost anything else at all, except to each other weakly. Citric acid also has a weak negative correlation to acetic acid. I'm guessing it's due to the fact that whites have more citric acid and less acetic acid than reds, so it's rare to find a wine with high or low levels of both.
+
+## White wine correlations
+
+Let's take a look at correlations within the white wine set.
+
+```{r echo=FALSE}
+basic_cor(data = wine_df[wine_df$type == 'white',
+                         !(names(wine_df) %in% no_cor_cols)],
+          name = 'Whites')
+```
+
+We see some of the same patterns as in the whole set. Alcohol is the best single predictor of quality rating, having a moderate correlation, followed by density in a weak negative correlation. While the correlation between density and quality remains weak but present, the correlation between quality and acetic acid has gone from weak in the whole set to weaker among whites, maybe because acetic acid isn't very high in whites in general.
+
+The correlations of sugar and alcohol to density have strengthened, maybe because chlorides and tartaric acid aren't present in large amounts in whites.
+
+Compared to the whole set, the negative correlation between alcohol and bound SO2 has strengthened to moderate, corroborating the fact that SO2 slows the fermentation process (whites having more SO2 than reds, thus SO2 being a more prominent fermentation inhibitor in whites).
+
+Remaining uncorrelated to almost everything, pH has traded its weak negative correlation with citric acid for a slightly more moderate negative correlation with tartaric acid.
+
+Now citric acid is not correlated to anything, nor are sulphates (other than to the ratio of sulphates to SO2), chlorides, and acetic acid.
+
+## Red wine correlations
+
+```{r echo=FALSE}
+basic_cor(data = wine_df[wine_df$type == 'red',
+                         !(names(wine_df) %in% no_cor_cols)],
+          name = 'Reds')
+```
+
+Alcohol has slightly strengthened its moderate correlation to quality ratings. Acetic acid (vinegar), more common in reds, has a weak negative pull on ratings as well, stronger than in whites. Density is not a significant indicator of quality as it is somewhat in whites.
+
+Alcohol and sugar are strangely not correlated at all, nor are alcohol or sugar correlated to SO2 which inhibits fermentation.
+
+Another puzzling correlation is the weak positive correlation between chlorides and sulphates. I had thought it showed in the whole set simply because reds have more chlorides and sulphates than whites, confirmed by the absence of correlation in whites. But, here they are correlated within the red set itself, maybe suggesting a more direct relationship between the variables than simply coinciding in reds.
+
+At the same time, the correlation between density and chlorides has dropped, suggesting that chlorides were just a proxy for reds regarding density, contrary to my assumption. Density in reds is more connected to acids (in addition to sugar and alcohol to a lesser degree), specifically tartartic acid and less so citric acid.
+
+Citric acid's weak correlation to density and moderate correlation to pH looks like maybe a secondary effect of citric acid's strong correlation to tartaric acid which is strongly correlated to density and pH. Tartaric acid seems key to watch in reds.
+
+It looks like the acid structure in reds is more complex, acetic acid being negatively correlated to citric and tartaric acids. What's citric acid's relationship to tartaric acid? Perhaps winemakers add tartaric acid to inhibit the microbial growth that excessive citric acid will support, while tart and citrus flavors complement each other. I'll want to compare ratios of these acids to other variables in further analysis.
+
+In reds, no single variable is uncorrelated to all other variables. But, if you take the SO2 variables as a group, you see that they are only internally correlated, not correlated to anything else. SO2, found in low levels in reds, seems to play an insignificant role in their overall structure.
+
+## Alcohol and quality
+
+Let's check out quality rating against other variables, starting with the variable most strongly correlated to quality, alcohol.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+alc_bounds = get_out_bounds(wine_df$alcohol)
+basic_scatter(data = wine_df, x = 'alcohol', y = 'qual',
+              x_lbl = 'alcohol', y_lbl = 'qual',
+              x_breaks = seq(8, 15, 0.5), y_breaks = seq(3, 9, 1),
+              x_limits = c(min(wine_df$alcohol), alc_bounds[2]),
+              jit_color = wine_df$type, jit_w = .025, jit_h = .4)
+```
+
+This graph excludes the upper alcohol outliers and introduces enough jitter to reduce overplotting while maintaining distinction between values.
+
+Here we see that the strongest direct relationship between quality ratings and a single numeric variable is loosely linear. I also allowed ggplot to choose its method of creating a smooth line (blue line) which produced a somewhat sigmoidal fit, with a pronounced inflection at about 9.75% alcohol between ratings of 5 and 6.
+
+Let's look at each type separately, starting with whites.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+wht_alc_bounds = get_out_bounds(wht_mod_df$alcohol)
+basic_scatter(data = wht_mod_df, x = 'alcohol', y = 'qual',
+              x_lbl = 'alcohol', y_lbl = 'qual',
+              x_breaks = seq(7.5, 14, 0.5),
+              x_limits = c(min(wht_mod_df$alcohol), wht_alc_bounds[2]),
+              y_breaks = seq(3, 9, 1), jit_w = 0.025, jit_h = .4)
+```
+We see the same inflection at around 9.75% ABV. And, it appears that alcohol levels below about this point have roughly the same distribution of quality ratings around 5 and 6, indicating basically no directional correlation between ratings and alcohol at this low level of alcohol. But, above this level of alcohol, we see an upward trend.
+
+It's worth noting the small, perhaps anomalous, cluster around 8.75% ABV receiving higher ratings.
+
+Let's see if we see the same thing in reds.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+red_alc_bounds = get_out_bounds(red_mod_df$alcohol)
+basic_scatter(data = red_mod_df, x = 'alcohol', y = 'qual',
+              x_lbl = 'alcohol', y_lbl = 'qual',
+              x_breaks = seq(7.5, 14, 0.5),
+              x_limits = c(min(red_mod_df$alcohol), red_alc_bounds[2]),
+              y_breaks = seq(3, 9, 1), jit_w = .025, jit_h = .4,
+              pt_color = 'red')
+```
+
+The flattening below mean alcohol is not as pronounced, nor is the inflection at the mean.
+
+The upper inflection point is more pronounced in reds, and it starts at lower ABV, about 12% as opposed to about 12.5% in whites. But, the number of observations does drop dramatically above this point, so it may just be a coincidental wiggle (that's a technical term).
+
+Let's transpose the axes and take a look.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+quality_lims = as.character(c(3:8))
+x_limits = quality_lims
+x_breaks = seq(3, 9, 1)
+y_limits = c(8, 15)
+y_breaks = seq(8, 15, 1)
+
+jbv_trend(data = wine_df, x = 'quality', y = 'alcohol', x_lbl = 'quality',
+          y_lbl = 'alcohol', leg_lbl = 'type', jit_color = wine_df$type,
+          jit_h = 0.025, x_limits = x_limits, x_breaks = x_breaks,
+          y_limits = y_limits, y_breaks = y_breaks)
+
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'alcohol', x_lbl = 'quality',
+          y_lbl = 'alcohol', leg_lbl = 'whites', jit_h = 0.025,
+          x_limits = x_limits, x_breaks = x_breaks, y_limits = y_limits,
+          y_breaks = y_breaks, jit_color = wht_mod_df$type)
+
+jbv_trend(data = red_mod_df, x = 'quality', y = 'alcohol', x_lbl = 'quality',
+          y_lbl = 'alcohol', leg_lbl = 'reds', jit_h = 0.025,
+          x_limits = x_limits, x_breaks = x_breaks, y_limits = y_limits,
+          y_breaks = y_breaks, jit_color = red_mod_df$type)
+```
+
+These plots exclude ratings of 9, since there are only about five of them. They also exclude ABV above 15%, but not all upper outliers.
+
+The upper dotted lines in these graphs connects the 90th percentiles of ABV at each quality rating, the lower dotted lines connect the 10th percentiles, and the solid middle line is along the means.
+
+That relatively flat correlation between low ratings and low alcohol is apparent here, the 9.75% ABV inflection landing on quality rating 5. You also see the same upper inflection at rating 7 in whites, but not so in reds, whereas this inflection was more pronounced in reds in the previous charts. There are perhaps diminishing quality returns on alcohol.
+
+One explanation for this trend not appearing strong in reds is that there are few reds with 8s (mainly due to fewer reds in general), and plotting from mean to mean across ratings is much cruder than the smoothed regression. In any case, the median of reds with 8s is not significantly different from the median of reds with 7s (as indicated by the overlapping notches, with a 95% CI).
+
+Another piece of it is that white ABV bifurcates at that lower inflection point as ratings improve. That is, we have a pocket of low-alcohol whites that bucked the trend and received higher ratings. This low-ABV "pocket" may extend into lower ratings as well, possibly representing a unique style of wine within whites capable or receiving higher ratings despite its weak ABV, given properly complimentary levels of other attributes.
+
+There's also the hint of clustering at regular intervals as seen in citric acid and sugars.
+
+Other than that, the increasingly top-heavy violins confirm the general positive correlation between alcohol and ratings in wines with ABV above about 9.75%. That said, the upper quantile in whites flattens at quality rating 7 and about 12.5% ABV.
+
+I'll make a five-level factor of alcohol, alc_fact, split at 9.0%, 9.75%, 11.75%, and 13.25% ABV.
+
+```{r echo=FALSE}
+wine_df$alc_fact =
+  cut(x = wine_df$alcohol,
+      breaks = c(0, 9.0, 9.75, 11.75, 13.25, (max(wine_df$alcohol) + 1)))
+
+wht_mod_df$alc_fact = wine_df[wine_df$type == 'white', 'alc_fact']
+red_mod_df$alc_fact = wine_df[wine_df$type == 'red', 'alc_fact']
+summary(wine_df$alc_fact)
+```
+
+## Sugar and quality
+
+Residual sugar isn't linearly correlated to quality rating, but it has such an odd distribution in whites that I want to take a closer look.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+sug_bounds = get_out_bounds(wine_df$residual.sugar)
+basic_scatter(data = wine_df, x = 'residual.sugar', y = 'qual',
+              jit_color = wine_df$type, x_lbl = 'residual.sugar',
+              y_lbl = 'qual', x_breaks = seq(0, 70, 1),
+              x_limits = c(0, sug_bounds[2]), jit_h = .4, jit_w = 0)
+```
+
+This graph cuts out upper sugar outliers.
+
+Let's look at just whites, since they have that long, fat, bumpy tail.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+wht_sug_bounds = get_out_bounds(wht_mod_df$residual.sugar)
+basic_scatter(data = wht_mod_df, x = 'residual.sugar', y = 'qual',
+              x_lbl = 'residual.sugar', y_lbl = 'qual',
+              x_breaks = seq(0, 70, 1), x_limits = c(0, wht_sug_bounds[2]),
+              y_breaks = seq(3, 9, 1), jit_h = .4, jit_w = 0,
+              pt_color = 'purple')
+
+red_sug_bounds = get_out_bounds(red_mod_df$residual.sugar)
+```
+
+There are upward bumps in quality ratings at a couple of sugar levels, suggesting there might be a couple of optimal levels of residual sugar depending on some other variable or set of variables. Again, it looks like there might be more than one style of white Vinho Verdes, and that they have different sugar levels. On the other hand, the bump around 14 grams (about 12.5 to 15.5 g) may just be an anomaly.
+
+Given the rough upward trend in the group of wine with low sugar (most common style), it looks like a little more sugar is a little better than very little. But, above 4 or 5 grams, less is generally more (other than that bump at 14g). There are likely other variables at play as well.
+
+Let's flip the axis and use that neat jitterbox violin trend plot (the "Fenced JBV"?) I made for alcohol and quality, and take a look at both reds and whites.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+x_limits = append(x = quality_lims, values = '9')
+x_breaks = seq(3, 9, 1)
+y_limits = c(0, 30)
+y_breaks = seq(0, 30, 2)
+
+all_sug_jbv = jbv_trend(data = wine_df, x = 'quality', y = 'residual.sugar',
+          x_lbl = 'quality', y_lbl = 'residual.sugar',
+          x_limits = x_limits, x_breaks = x_breaks,
+          y_limits = y_limits, y_breaks = y_breaks, jit_h = 0,
+          jit_color = wine_df$type)
+wht_sug_jbv = jbv_trend(data = wht_mod_df, x = 'quality', y = 'residual.sugar',
+          x_lbl = 'quality', y_lbl = 'residual.sugar',
+          x_limits = x_limits, x_breaks = x_breaks,
+          y_limits = y_limits, y_breaks = y_breaks, jit_h = 0,
+          pt_color = wht_mod_df$type, leg_lbl = "type")
+red_sug_jbv = jbv_trend(data = red_mod_df, x = 'quality', y = 'residual.sugar',
+          x_lbl = 'quality', y_lbl = 'residual.sugar',
+          y_limits = c(0, 10), y_breaks = seq(0, 10, 1), jit_h = 0,
+          pt_color = red_mod_df$type, leg_lbl = "type")
+
+# grid.arrange(red_sug_jbv, wht_sug_jbv, all_sug_jbv, ncol = 2)
+# all_sug_jbv
+# wht_sug_jbv
+red_sug_jbv
+```
+
+Sugar doesn't seem to play a significant role in the quality ratings of red Vinho Verdes. Most wines fall in the low category under 3 grams, and there's not significant difference in median sugar levels between any quality rating categories.
+
+There's more going on in sugar levels in whites.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+wht_sug_jbv +
+  geom_hline(yintercept = 16.5, color = 'yellow') +
+  geom_hline(yintercept = 9.5, color = 'yellow') +
+  geom_hline(yintercept = 5.5, color = 'yellow') +
+  geom_hline(yintercept = 3, color = 'yellow')
+```
+
+I cut out a few values above 30g sugar. As in the previous plots of residual sugar, there is no jitter on the sugar axis. The horizontal yellow lines show the factor levels I created earlier.
+
+In general, and on average, high ratings are associated with lower sugar, but so are low ratings, while mediocre ratings are associated with relatively higher sugar levels.
+
+The sugar factor levels I created earlier, the multiple modes, are apparent here in whites. The pocket of whites at about 14 grams (about 12.5 to 15.5 g) receiving higher ratings may just be an anomaly, but it does fall right in the center of one of the factor levels (9.5 to 16.5). I wonder if it coincides with the low-ABV pocket of bumped ratings.
+
+Those yellow factor level lines look a lot like a log scale. Let's look at this plot with a log10 scale.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+wht_sug_jbv +
+  geom_hline(yintercept = 16.5, color = 'yellow') +
+  geom_hline(yintercept = 9.5, color = 'yellow') +
+  geom_hline(yintercept = 5.5, color = 'yellow') +
+  geom_hline(yintercept = 3, color = 'yellow') +
+  scale_y_log10(breaks = seq(0, 60, 1))
+```
+
+The division between low- and high-sugar wines centering on 3g is much more apparent. But, I'm tempted to redraw that line at the upper end or lower end of that interval of low density of observations, or to make that space its own level.
+
+You could almost make 4.5 to 5.5 grams its own level.
+
+I think where to draw the factor level lines might depend on whether we're using the factor in linear regression or to build regression splines. Are we looking to apply a coefficient to each level (dummy variable) and thus want sugar factor levels with somewhat normally distributed ratings? Or, are we looking to apply unique functions to the subset of the continuous variable that falls within each level (which may include a flat linear coefficient at one or more levels), and thus want to group the levels around apparent polynomial behavior in the data points?
+
+This is all guesswork on my part before I take my first formal class on machine learning (next class!).
+
+Let's look at the sugar factor as if each level is its own data set, to get a better sense of them as possible splines. There's probably a better way to do this, actually creating splines.
+
+I'll do another quick fenced JBV before breaking the factor into separate plots in one grid display.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+jbv_trend(data = wht_mod_df, x = 'sugar', y = 'qual', x_lbl = 'sugar',
+          y_lbl = 'qual', y_breaks = seq(3, 9, 1), leg_lbl = "type",
+          pt_color = wht_mod_df$type)
+```
+
+It looks as if, in whites, your chances of creating a wine rated above 6 instead of below 6 are best with residual sugar levels between 3 and 5.5 g / dm^3, better at below 3 g / dm^3 than above 5.5 g / dm^3, and almost nonexistent above 16.5 g / dm^3.
+
+Okay, how about some proto splines?
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plts_lst =
+  get_proto_spline_lst(data = wht_mod_df, x = 'residual.sugar', y = 'qual',
+                       l_col = 'sugar', y_breaks = seq(3, 9, 1),
+                       y_limits = c(3, 9), x_lbl = 'residual.sugar',
+                       y_lbl = 'qual', jit_w = 0, jit_h = .4,
+                       pt_color = 'turquoise')
+
+# # Not sure why I can no longer apply a log scale. Worked before.
+# plts_lst[[1]] = plts_lst[[1]] + scale_x_log10()
+plts_lst[[5]] = plts_lst[[5]] +
+  scale_x_continuous(limits = c(16.5, wht_sug_bounds[2]))
+  # scale_x_log10(limits = c(16.5, wht_sug_bounds[2]))
+
+grid.arrange(grobs = plts_lst, ncol = 3)
+```
+
+Again, this is just whites. The high outliers are cut out of the last group.
+
+You can see all of the following observations by looking at the whole scatter plot, but it becomes a little more clear with the segments.
+
+Again, it might be worth adjusting the levels.
+
+The low group, where half the values are, has a slight upward trend. And, compared to most of the the rest of the groups, this low-sugar group has proportionately higher ratings (though it is common to see ratings as low as any other group). If we assume this estimated group represents a distinct style of whites from the rest, we can say that a little sugar goes a long way among these ultra-dry whites.
+
+Other than the bump at 14 grams, quality ratings seem to peak in general at about 3 or 4 grams. When done right, this second style seems to be a favorite, which may explain why so many whites fall in this range.
+
+The next two groups could be lumped together as a slight downward trend from there, a trend that extends into the fourth group a few grams. This is more clear in the whole plot.
+
+Then, there's a cluster of higher ratings and a thinning of lower ratings around 14 grams, suggesting a possible "sweet" spot for the more sugary whites.
+
+If we were just fitting sugar to quality, we might create a regression spline, moving the knots to about 3, 12, and 14 (removing outliers above about 20). But, the bump at 14 might be an insignificant wiggle leading to overfit. And, since I have a hunch that there are multiple styles of white Vinho Verdes, I also have a hunch that residual sugar's interaction with other variables might do the heavy lifting of factoring sugar into a quality rating prediction.
+
+Real quick, here's the proportion of sugar factor levels in each quality bracket for all wines, whites, and reds, respectively.
+
+```{r echo=FALSE}
+plt0 = ggplot(data = wine_df) +
+  geom_bar(aes(x = quality, fill = sugar), position = "fill")
+pltw = ggplot(data = wht_mod_df) +
+  geom_bar(aes(x = quality, fill = sugar), position = "fill")
+pltr = ggplot(data = red_mod_df) +
+  geom_bar(aes(x = quality, fill = sugar), position = "fill")
+grid.arrange(plt0, pltw, pltr, ncol = 2)
+
+plt0 = ggplot(data = wine_df) +
+  geom_bar(aes(x = quality, fill = sugar), position = "dodge")
+pltw = ggplot(data = wht_mod_df) +
+  geom_bar(aes(x = quality, fill = sugar), position = "dodge")
+pltr = ggplot(data = red_mod_df) +
+  geom_bar(aes(x = quality, fill = sugar), position = "dodge")
+grid.arrange(plt0, pltw, pltr, ncol = 2)
+```
+
+Note that the color scale is different for reds (bottom), excluding the highest sugar level.
+
+Again, we see that reds aren't typically very sweet compared to whites. And, while sugar alone isn't a good predictor of quality, few if any of the best wines are extremely sweet relative to their type.
+
+## Sugar and alcohol
+
+You could say that residual sugar is dependent on alcohol, but they are both dependent on the same underlying conditions of starting sugar, added sugar, and the time and speed of the ensuing fermentation (which itself is a function of starting and added sugar). So, I'll plot them both ways, with upper outliers removed on each axis.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basic_scatter(data = wine_df, x = 'residual.sugar', y = 'alcohol',
+              jit_color = wine_df$type, x_lbl = 'residual.sugar',
+              y_lbl = 'alcohol',
+              x_breaks = seq(0, 25, 1), x_limits = c(0.5, sug_bounds[2]),
+              y_breaks = seq(8, 14, 0.5), y_limits = c(8, alc_bounds[2]),
+              jit_h = .2, jit_w = .2)
+basic_scatter(data = wine_df, x = 'alcohol', y = 'residual.sugar',
+              jit_color = wine_df$type, x_lbl = 'alcohol',
+              y_lbl = 'residual.sugar',
+              x_breaks = seq(8, 14, 0.5), x_limits = c(8, alc_bounds[2]),
+              y_breaks = seq(0, 25, 1), y_limits = c(0.5, sug_bounds[2]),
+              jit_h = .2, jit_w = .2)
+```
+
+We see the two distinct sugar ranges emerge here again, with reds mostly associated with the low-sugar group, a group which now appears to have a pretty even distribution of ABV values.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plt1 = basic_scatter(data = red_mod_df, x = 'residual.sugar', y = 'alcohol',
+              x_lbl = 'residual.sugar', y_lbl = 'alcohol',
+              x_breaks = seq(0, 20, 1),
+              x_limits = c(1, red_sug_bounds[2]),
+              y_breaks = seq(8, 14, 0.5), y_limits = c(8, red_alc_bounds[2]),
+              jit_h = .1, jit_w = .1, pt_color = 'red') +
+  geom_hline(yintercept = 10.25, color = 'orange') +
+  geom_vline(xintercept = 3, color = 'orange')
+plt2 = basic_scatter(data = red_mod_df, x = 'alcohol', y = 'residual.sugar',
+              x_lbl = 'alcohol', y_lbl = 'residual.sugar',
+              x_breaks = seq(8, 14, 0.5), x_limits = c(8, red_alc_bounds[2]),
+              y_breaks = seq(0, 20, 1),
+              y_limits = c(red_sug_bounds[1], red_sug_bounds[2]),
+              jit_h = .1, jit_w = .1, pt_color = 'red') +
+  geom_vline(xintercept = 10.25, color = 'orange') +
+  geom_hline(yintercept = 3, color = 'orange')
+grid.arrange(plt1, plt2, ncol = 2)
+```
+
+These plots are just reds.
+
+In reds, there's maybe a peak in alcohol levels at around 2.25 grams of sugar, with maybe a slight bifurcation at around 10.25% ABV, the inflection point. You see the majority of reds at low alcohol levels, distributed fairly normally around 2 grams of sugar with a slight skew to 3 grams.
+
+The orange lines are visual estimations of the edge of a supposed common style.
+
+I'm guessing acids are going to play a larger role in the structures of reds in general.
+
+There is probably a critical mass of beginning sugar required to stimulate sufficient alcohol production, but any more than that makes it too sweet, since the "young" nature of Vinho Verdes leaves more sugar unfermented.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+jit = geom_jitter(alpha = .2, width = .1, height = .1)
+lin_fit_ln = geom_smooth(method = 'lm', color = 'yellow')
+
+wht_alc_sug_plt =
+  ggplot(data = wht_mod_df, aes(x = residual.sugar, y = alcohol)) +
+  jit + lin_fit_ln + geom_smooth() +
+  scale_x_continuous(limits = c(0.5, wht_sug_bounds[2]),
+                     breaks = seq(0, 25, 2)) +
+  scale_y_continuous(limits = c(8, wht_alc_bounds[2]),
+                     breaks = seq(8, 14, 0.5)) +
+  # Sugar levels
+  geom_vline(xintercept = 3, color = 'orange') +
+  geom_vline(xintercept = 5.5, color = 'orange') +
+  geom_vline(xintercept = 9.5, color = 'orange') +
+  geom_vline(xintercept = 16.5, color = 'orange') +
+  # # Ratings bump set
+  geom_vline(xintercept = 12.6, color = 'red') +
+  geom_vline(xintercept = 15.5, color = 'red') +
+  # # Redraw nether region
+  geom_vline(xintercept = 2.5, color = 'yellow') +
+  geom_vline(xintercept = 4, color = 'yellow') +
+  # Alcohol levels
+  geom_hline(yintercept = 9.0, color = 'red') +
+  geom_hline(yintercept = 9.75, color = 'orange') +
+  geom_hline(yintercept = 11.75, color = 'orange') +
+  geom_hline(yintercept = 13.25, color = 'orange') +
+  # # Lower limit of ratings bump set
+  geom_hline(yintercept = 8.7, color = 'red')
+
+# wht_sug_alc_plt =
+#   ggplot(data = wht_mod_df, aes(x = alcohol, y = residual.sugar)) +
+#   jit + lin_fit_ln + geom_smooth() +
+#   scale_x_continuous(limits = c(8, wht_alc_bounds[2]),
+#                      breaks = seq(8, 14, 1)) +
+#   scale_y_continuous(limits = c(0.5, wht_sug_bounds[2]),
+#                      breaks = seq(0, 25, 2)) +
+#   # Sugar levels
+#   geom_hline(yintercept = 3, color = 'orange') +
+#   geom_hline(yintercept = 5.5, color = 'orange') +
+#   geom_hline(yintercept = 9.5, color = 'orange') +
+#   geom_hline(yintercept = 16.5, color = 'orange') +
+#   # # Ratings bump set
+#   geom_hline(yintercept = 12.6, color = 'red') +
+#   geom_hline(yintercept = 15.5, color = 'red') +
+#   # # Redraw nether region
+#   geom_hline(yintercept = 2.5, color = 'yellow') +
+#   geom_hline(yintercept = 4, color = 'yellow') +
+#   # Alcohol levels
+#   geom_vline(xintercept = 9.0, color = 'red') +
+#   geom_vline(xintercept = 9.75, color = 'orange') +
+#   geom_vline(xintercept = 11.75, color = 'orange') +
+#   geom_vline(xintercept = 13.25, color = 'orange') +
+#   # # Lower limit of ratings bump set
+#   geom_vline(xintercept = 8.7, color = 'red')
+
+wht_alc_sug_plt
+wht_alc_sug_plt + scale_x_log10()
+
+ggplot(data = wht_mod_df) +
+  geom_bin2d(aes(x = residual.sugar, y = alcohol)) +
+  scale_x_binned(limits = c(0, 28))
+
+ggplot(data = wht_mod_df) +
+  geom_hex(aes(x = residual.sugar, y = alcohol)) +
+  scale_x_binned(limits = c(0, 30))
+```
+
+These plots are just whites. The orange lines indicate the factor levels I previously created. The yellow lines on the residual sugar axis mark out the relatively empty space between groups. The red lines represent the ranges in each variable where we see quality bumps. (This does step into multivariate analysis, but I'm okay with that. Exploration is more iterative than lockstep.)
+
+We rsee the two main sugar ranges more clearly with a log scale. In the higher-sugar group, the negative association tightens with higher sugar levels (upper outliers aside). The higher-sugar group begins to merge with the low-sugar group at higher alcohol levels. This happens in such a way that I wonder whether to say that the low-sugar group has a slightly positive association with alcohol which is tighter at lower alcohol, or to say that the low-sugar group is more or less normally distributed over alcohol like low-sugar reds. It depends somewhat on where you draw the line between the low-sugar group and the high-sugar group.
+
+Other variables may prove to be useful in classifying distinct styles of wines, but if reds are any indication, there may be multiple groups in the low-sugar, high-alcohol range. There may be more than two groups. For starters, we can see again that our initial division at 3 grams might simply be the middle of a "nether region" unto itself, from about 2.5 grams to about 4 grams, followed by another group to about 6 grams. Then, the previously established levels apply at 9.5 and 16.5 grams. This not only mirrors the grouping we see, but it more closely resembles a log10 scale, which is convenient. The lines might be more precisely drawn with more rigorous analysis to better reflect the grouping and/or a log scale.
+
+In the same way, we see alcohol levels emerge here as before in quality ratings, though not as pronounced as the sugar levels. In fact, the lower level line at 9.0% ABV cuts right through the middle of a dense cluster. The lower end of that subset that received higher ratings, 8.7%, creates a more intuitive lower bound at higher sugar levels.
+
+Multiple possible clusters emerge within these sectors of alcohol and sugar proportions.
+
+In any case, the biggest distinction between the two high and low sugar groups markedly bifurcates any alcohol level you choose to make.
+
+```{r eval=FALSE, include=FALSE}
+# # plts_lst = get_proto_spline_lst(data = wht_mod_df, x = 'residual.sugar',
+# #                                 y = 'alcohol', l_col = 'sugar',
+# #                                 x_lbl = 'residual.sugar', y_lbl = 'alcohol',
+# #                                 jit_w = 0, jit_h = .4)
+# # # plts_lst[[1]] = plts_lst[[1]] + scale_x_log10()
+# # plts_lst[[5]] = plts_lst[[5]] +
+# #   scale_x_continuous(limits = c(16.5, wht_sug_bounds[2]))
+# 
+# plts_lst = get_proto_spline_lst(data = wht_mod_df, x = 'alcohol',
+#                                 y = 'residual.sugar', l_col = 'alc_fact',
+#                                 x_lbl = 'alcohol', y_lbl = 'residual.sugar',
+#                                 y_limits = c(0, 30), jit_w = 0, jit_h = .4)
+# # plts_lst[1] = plts_lst[1] +
+# #   scale_x_continuous(limits = c(8.25, mean(wine_df$alcohol)))
+# grid.arrange(grobs = plts_lst)
+```
+
+
+
+```{r echo=FALSE}
+jbv_trend(data = wine_df, x = 'sugar', y = 'alcohol', x_lbl = 'sugar',
+          y_lbl = 'alcohol', leg_lbl = 'type', jit_h = 0,
+          pt_color = wine_df$type)
+```
+
+Again, we see the same pattern as when correlating sugar and quality ratings. Keeping in mind that these sugar levels represent intuitive modes rather than equal intervals, we see that, though there isn't a big difference on average in alcohol content between the first and second sugar groups, the distribution slightly tends upward in the second group. From there, alcohol content drops on average and in median.
+
+You might speculate that there exists a critical mass of starting sugar necessary to optimize alcohol production (all else equal). You might also speculate that that critical mass itself is a function of time spent fermenting, since halting fermentation earlier renders the remaining sugar moot as far as alcohol content goes. In other words, we might see a similar curve in wines allowed to ferment longer, but the average alcohol content might peak at higher residual sugar levels.
+
+I wonder if each (or any) of these residual sugar levels roughly coincide with particular standard fermentation times and sugar additive practices. For example, the first group (where about 40% of the wines fall) may represent no- or low-sugar-added wines allowed to ferment at various lengths and speeds, producing the full range of alcohol levels. The rest of groups may represent shorter fermentation times with various amounts of starting sugar and sugar added.
+
+Quickly, each following grid is all wines, whites, and reds, respectively:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plt0 = ggplot(data = wine_df) +
+  geom_bar(aes(fill = alc_fact, x = sugar), position = "fill") +
+  coord_flip()
+pltw = ggplot(data = wht_mod_df) +
+  geom_bar(aes(fill = alc_fact, x = sugar), position = "fill") +
+  coord_flip()
+pltr = ggplot(data = red_mod_df) +
+  geom_bar(aes(fill = alc_fact, x = sugar), position = "fill") +
+  coord_flip()
+grid.arrange(plt0, pltw, pltr, ncol = 2)
+
+plt0 = ggplot(data = wine_df) +
+  geom_bar(aes(fill = alc_fact, x = sugar), position = "dodge") +
+  coord_flip()
+pltw = ggplot(data = wht_mod_df) +
+  geom_bar(aes(fill = alc_fact, x = sugar), position = "dodge") +
+  coord_flip()
+pltr = ggplot(data = red_mod_df) +
+  geom_bar(aes(fill = alc_fact, x = sugar), position = "dodge") +
+  coord_flip()
+grid.arrange(plt0, pltw, pltr, ncol = 2)
+
+plt0 = ggplot(data = wine_df) +
+  geom_freqpoly(aes(x = alcohol, color = sugar))
+pltw = ggplot(data = wht_mod_df) +
+  geom_freqpoly(aes(x = alcohol, color = sugar))
+pltr = ggplot(data = red_mod_df) +
+  geom_freqpoly(aes(x = alcohol, color = sugar))
+grid.arrange(plt0, pltw, pltr, ncol = 2)
+
+plt0 = ggplot(data = wine_df) +
+  geom_freqpoly(aes(color = alc_fact, x = residual.sugar))
+pltw = ggplot(data = wht_mod_df) +
+  geom_freqpoly(aes(color = alc_fact, x = residual.sugar))
+pltr = ggplot(data = red_mod_df) +
+  geom_freqpoly(aes(color = alc_fact, x = residual.sugar))
+grid.arrange(plt0, pltw, pltr, ncol = 2)
+```
+
+Again, wines tend to be sweeter when they make less alcohol, most Vinho Verdes are low-sugar and low-alcohol, and whites are often sweeter than reds.
+
+In any case, if we're going to consider the relationship of sugar and alcohol beyond interdependence with fermentation as integral to the appreciated structure driving the ratings of tasters, we'll need to consider other variables that impact wine structure.
+
+I'm particularly interested in the roles of acids in both types of wines.
+
+## Citric acid and quality ratings
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+cit_out_bounds = get_out_bounds(wine_df$citric.acid)
+ggplot(data = wine_df, aes(x = citric.acid, y = qual, color = type)) +
+  geom_jitter(alpha = .2, width = .01, height = .45) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth() + geom_smooth(color = 'blue') +
+  scale_x_continuous(limits = c(0, cit_out_bounds[2]),
+                     breaks = seq(0, 1, 0.1)) +
+  scale_y_continuous(breaks = seq(3, 9, 1))
+```
+
+This graph removes citric acid upper outliers.
+
+We see those clusters of wines at the quarter-gram thresholds here as before.
+
+It looks like tasters preferred their whites to have about 0.2 to 0.5 grams of citric acid, where most whites fall.
+
+One the other hand, tasters may have preferred their reds to have more than that, or maybe less than that. Are their distinct citric acid styles of red Vinho Verdes?
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'citric.acid',
+          x_lbl = 'quality', y_lbl = 'citric.acid',
+          y_limits = c(0, 1), y_breaks = seq(0, 1, .1), jit_h = 0,
+          pt_color = wht_mod_df$type, leg_lbl = "type")
+```
+
+This graph of whites removes observations with citric acid above 1 and includes some upper outliers.
+
+Higher ratings among whites are more tightly centered on 0.3 grams of citric acid, but there isn't a significant difference between each rating class' median citric acid. Better whites don't tend to have extreme high or low levels of citric acid.
+
+```{r echo=FALSE, message=FALSE}
+# red_cit_out_bounds = get_out_bounds(red_mod_df$citric.acid)
+jbv_trend(data = red_mod_df, x = 'quality', y = 'citric.acid',
+          x_lbl = 'quality', y_lbl = 'citric.acid',
+          y_breaks = seq(0, 1, .1), jit_h = 0, alpha = .5,
+          pt_color = red_mod_df$type, leg_lbl = "type")
+```
+
+This graph includes all observations of reds, which includes one citric acid outlier.
+
+The story among reds is different. In general, relatively higher citric acid looks better, but very low levels can work out as well. We see the clustering around the quarter-gram targets, and the middle cluster seems to trend upward along ratings until it dissipates among the best reds, and two groups become more distinguishable. That is, the best reds tend to steer clear of the 0.25-gram threshold, either well above or well below it, whereas mediocre wines, and perhaps low-rated wines, cluster on that threshold as with the other thresholds.
+
+So, high-rating bifurcation emerges in citric acid among reds -- as we saw in alcohol and sugar -- and it coincides with clustering around quarter-gram intervals.
+
+```{r echo=FALSE, message=FALSE}
+jbv_trend(data = wht_mod_df, x = 'citric.range', y = 'qual',
+          x_lbl = 'citric.range', y_lbl = 'qual', y_breaks = seq(3, 9, 1),
+          alpha = .25, pt_color = wht_mod_df$type, leg_lbl = "type")
+jbv_trend(data = wht_mod_df, x = 'citric.thresh', y = 'qual',
+          x_lbl = 'citric.thresh', y_lbl = 'qual', y_breaks = seq(3, 9, 1),
+          alpha = .25, pt_color = wht_mod_df$type, leg_lbl = "type")
+jbv_trend(data = red_mod_df, x = 'citric.range', y = 'qual',
+          x_lbl = 'citric.range', y_lbl = 'qual', y_breaks = seq(3, 9, 1),
+          alpha = .25, pt_color = red_mod_df$type, leg_lbl = "type")
+jbv_trend(data = red_mod_df, x = 'citric.thresh', y = 'qual',
+          x_lbl = 'citric.thresh', y_lbl = 'qual', y_breaks = seq(3, 9, 1),
+          alpha = .25, pt_color = red_mod_df$type, leg_lbl = "type")
+```
+
+It's hard to say from these plots which citric acid level is a better predictor of quality, if either is at all, and if it improves upon the continuous variable of citric acid. For whites, citric.thresh does create a single stand-out level at 0.25-0.50 grams that stands "head and shoulders" above the rest.
+
+As for reds, here's reds "splined" on the thresholds then on the ranges:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+red_cit_qual_proto_spline_lst = 
+  get_proto_spline_lst(data = red_mod_df, x = 'citric.acid', y = 'qual',
+                       l_col = 'citric.thresh', x_lbl = 'citric.acid',
+                       y_lbl = 'qual', y_limits = c(3, 8),
+                       y_breaks = seq(3, 9, 1),
+                       x_breaks = seq(0, 0.75, 0.05),
+                       pt_color = 'red', jit_h = 0.49, jit_w = 0.01)
+grid.arrange(grobs = red_cit_qual_proto_spline_lst[1:3], ncol = 3)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+red_cit_qual_proto_spline_lst = 
+  get_proto_spline_lst(data = red_mod_df, x = 'citric.acid', y = 'qual',
+                       l_col = 'citric.range', x_lbl = 'citric.acid',
+                       y_lbl = 'qual', y_limits = c(3, 8),
+                       y_breaks = seq(3, 9, 1),
+                       x_breaks = seq(0, 0.75, 0.05),
+                       pt_color = 'red', jit_h = 0.49, jit_w = 0.01)
+grid.arrange(grobs = red_cit_qual_proto_spline_lst[1:3], ncol = 3)
+```
+
+Looking at both factors, one divided by the quarter-gram thresholds and one that centers the thresholds in each level, we see that ratings seem to peak midway between the thresholds among reds, at about 0.125 and 0.35-0.45 grams. We also see that they drop at the thresholds, 0.25 and 0.5 grams.
+
+So, even though wines tend to cluster around quarter-gram thresholds of citric acid, the best wines seem to fall between these thresholds. This suggests to me that the threshold clustering isn't due to intentionally shooting for suboptimal rating spaces, but may be due to common and less finessed methods leaning too heavily on preset citric acid levels.
+
+## Tartaric acid (fixed acidity) and quality
+
+```{r echo=FALSE, message=FALSE}
+ggplot(data = wine_df, aes(x = fixed.acidity, y = qual, color = type)) +
+  geom_jitter(alpha = .2, height = 0.49) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth() + geom_smooth(color = 'blue') +
+  scale_y_continuous(breaks = seq(3, 9, 1)) +
+  scale_x_continuous(breaks = seq(4, 16, 1))
+```
+
+All in all, there's not a tight association between tartartic acid and quality ratings, but it does seem that reds benefit more from higher levels than whites.
+
+Let's take a closer look real quick.
+
+```{r echo=FALSE, message=FALSE}
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'fixed.acidity',
+          x_lbl = 'quality', y_lbl = 'fixed.acidity',
+          y_breaks = seq(4, 15, 1), pt_color = wht_mod_df$type,
+          leg_lbl = "type")
+```
+
+Though there's a slight negative association between tartaric acid and quality in whites, there's no significant difference in the median fixed acidity of each quality rating class (3s and 9s aside).
+
+```{r echo=FALSE, message=FALSE}
+jbv_trend(data = red_mod_df, x = 'quality', y = 'fixed.acidity',
+          x_lbl = 'quality', y_lbl = 'fixed.acidity', jit_h = 0,
+          y_breaks = seq(4, 20, 1), pt_color = red_mod_df$type,
+          leg_lbl = "type")
+```
+
+As a group, reds rated 7 do have significantly higher tartaric acid than lower-rated reds. There aren't enough reds rated above 7 to say whether the trend continues.
+
+A tart red is often better than a tart white.
+
+## Acetic acid (volatile acidity, "vinegar") and quality
+
+```{r echo=FALSE, message=FALSE}
+ggplot(data = wine_df, aes(x = volatile.acidity, y = qual, color = type)) +
+  geom_jitter(alpha = .2, height = 0.49) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth() + geom_smooth(color = 'blue') +
+  scale_y_continuous(breaks = seq(3, 9, 1)) +
+  scale_x_continuous(breaks = seq(0, 1.6, 0.1))
+```
+
+Here we see the overall negative association between ratings and acetic acid is more pronounced among reds; the fit line slopes are roughly equal yet reds cover a greater range along the x axis -- Pearson's r is stronger for reds, too, as we saw earlier.
+
+```{r echo=FALSE, message=FALSE}
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'volatile.acidity',
+          x_lbl = 'quality', y_lbl = 'volatile.acidity',
+          y_breaks = seq(0, 1.6, 0.1), pt_color = wht_mod_df$type,
+          leg_lbl = "type", jit_w = 0.49)
+```
+
+Acetic acid occurs in lower levels among whites, and thus doesn't play a significant role in their quality.
+
+```{r echo=FALSE, message=FALSE}
+jbv_trend(data = red_mod_df, x = 'quality', y = 'volatile.acidity',
+          x_lbl = 'quality', y_lbl = 'volatile.acidity',
+          y_breaks = seq(0, 1.6, 0.1), pt_color = red_mod_df$type,
+          leg_lbl = "type", jit_w = 0.49)
+```
+
+People do seem to prefer a less vinegary red, and it is more of a risk in reds than in whites.
+
+How do the acids interact with each other?
+
+## Tartaric acid and citric acid
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = wine_df, aes(x = fixed.acidity, y = citric.acid, color = type)) +
+  geom_jitter(alpha = .2, size = 1) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth(color = 'blue') + geom_smooth() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+  scale_x_continuous(breaks = seq(4, 16, 1))
+```
+
+In general, we see the a positive association between these two acids. It's more pronounced in reds, with a somewhat sigmoidal curve.
+
+## Tartaric acid and acetic acid (volatile.acidity)
+
+```{r echo=FALSE, message=FALSE}
+ggplot(data = wine_df,
+       aes(x = fixed.acidity, y = volatile.acidity, color = type)) +
+  geom_jitter(alpha = .2, size = 1) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth(color = 'blue') + geom_smooth() +
+  scale_x_continuous(breaks = seq(4, 16, 1)) +
+  scale_y_continuous(breaks = seq(0, 1.6, 0.1))
+```
+
+Here's another somewhat marked difference between the structures of reds and whites, as in the next graph as well.
+
+## Volatile acidity (acetic acid, "vinegar") and citric acid
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = wine_df,
+       aes(x = volatile.acidity, y = citric.acid, color = type)) +
+  geom_jitter(alpha = .2, size = 1) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth(color = 'blue') + geom_smooth() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+  scale_x_continuous(breaks = seq(0, 1.6, 0.1))
+```
+
+Acids are more closely associated in reds than in whites, and that association is shifted along at least one axis. Acetic acid in reds, a product of unwanted microbial growth, is negatively associated with the other two acids, which are preservatives. Citric acid has the strongest association to its fellow acids. Is its positive association with tartaric acid due to their complementary roles in structure or to their complementary roles in preservation? both? neither? both and neither? What's puzzling is that citric acid also "speeds up" fermentation.
+
+Though I'm not going to build a classification model, I'm starting to see that multiple variables taken together would probably accurately classify reds and whites.
+
+Further, acids in reds are more associated with each other, suggesting a broader range of distinct acid structures among reds.
+
+## pH and quality
+
+What about the overall acidity of a wine?
+
+```{r echo=FALSE, message=FALSE}
+ggplot(data = wine_df, aes(x = pH, y = qual, color = type)) +
+  geom_jitter(alpha = .2, size = 1) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth(color = 'blue') + geom_smooth()
+```
+
+There's not a lot you can tell from this graph about how pH is related to quality ratings, other than that it probably isn't.
+
+Let's look at each type separately.
+
+```{r echo=FALSE, message=FALSE}
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'pH',
+          x_lbl = 'quality', y_lbl = 'pH', pt_color = wht_mod_df$type,
+          leg_lbl = "type")
+jbv_trend(data = red_mod_df, x = 'quality', y = 'pH',
+          x_lbl = 'quality', y_lbl = 'pH', pt_color = red_mod_df$type,
+          leg_lbl = "type")
+```
+
+Nope, pH isn't significantly different between quality ratings in whites. You could say that 8s are a little less acidic than 5s in general, but barely.
+
+It's almost the same case in reds, only 7s are typically a little more acidic than 4s.
+
+## SO2 (and sulphates) and quality
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'total.sulfur.dioxide',
+          x_lbl = 'quality', y_lbl = 'total.sulfur.dioxide',
+          pt_color = wht_mod_df$type, leg_lbl = "type",
+          y_breaks = seq(0, 450, 20))
+jbv_trend(data = red_mod_df, x = 'quality', y = 'total.sulfur.dioxide',
+          x_lbl = 'quality', y_lbl = 'total.sulfur.dioxide',
+          pt_color = red_mod_df$type, leg_lbl = "type",
+          y_limits = c(0, 160), y_breaks = seq(0, 450, 20))
+```
+
+In general, whites with higher ratings tend to have a little less total SO2, but 4s buck this trend. If it isn't an anomaly, it might be that some wines should have used more SO2 to control fermentation, but they didn't, and it didn't turn out well.
+
+I removed a few upper SO2 outliers in reds, and we see the same dynamic there.
+
+What about free SO2?
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'free.sulfur.dioxide',
+          x_lbl = 'quality', y_lbl = 'free.sulfur.dioxide',
+          pt_color = wht_mod_df$type, leg_lbl = "type",
+          y_limits = c(0, 160), y_breaks = seq(0, 450, 20))
+jbv_trend(data = red_mod_df, x = 'quality', y = 'free.sulfur.dioxide',
+          x_lbl = 'quality', y_lbl = 'free.sulfur.dioxide',
+          pt_color = red_mod_df$type, leg_lbl = "type",
+          y_breaks = seq(0, 450, 10))
+```
+
+Here the difference between 4s and higher ratings in whites is much more pronounced, though the difference among averages in 5s and up is not as pronounced. At the same time, the upward trend of the lower 10th quantile in whites emerges more strongly.
+
+The negative association at 5s and above slightly re-emerges in reds.
+
+There's clustering around 5 and 15 mg, which I didn't notice in the univariate analysis because I allowed the outliers to extend the scale and crowd the datapoints.
+
+Again, it's as if many of the 4s didn't have enough SO2 to begin with, then fermentation burnt through it all and left little unused free SO2.
+
+Looking at bound SO2 (the amount of used SO2) and sulphates (the presumed precursor to free SO2) may tell a different story.
+
+But, before we go there, there was a concern that free SO2 above 50 mg might be detectable to the nose and might affect ratings, so let's check that.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+jbv_trend(data = red_mod_df, x = 'free.SO2', y = 'qual',
+          x_lbl = 'free.SO2', y_lbl = 'qual', pt_color = red_mod_df$type,
+          leg_lbl = "type", y_limits = c(3, 9), y_breaks = seq(3, 9, 1))
+jbv_trend(data = wht_mod_df, x = 'free.SO2', y = 'qual',
+          x_lbl = 'free.SO2', y_lbl = 'qual', pt_color = wht_mod_df$type,
+          leg_lbl = "type", y_limits = c(3, 9), y_breaks = seq(3, 9, 1))
+```
+
+There aren't enough reds above 50 mg free SO2 to make a comparison, but in whites it's more clear. Median ratings between the two groups in whites aren't significantly different, but proportionately more whites above 50 mg have 5s, and proportionately fewer have 7s and 8s. That said, proportionately fewer are rated 4 as well.
+
+This both corroborates the association of 4s with low SO2 and corroborates the idea that free SO2 above 50 mg is detectable to the nose and may adversely affect appreciation.
+
+Now let's check out bound SO2, the SO2 that has done its job in the wine.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'bound.SO2',
+          x_lbl = 'quality', y_lbl = 'bound.SO2', pt_color = wht_mod_df$type,
+          leg_lbl = "type", y_breaks = seq(0, 450, 20))
+jbv_trend(data = red_mod_df, x = 'quality', y = 'bound.SO2',
+          x_lbl = 'quality', y_lbl = 'bound.SO2', pt_color = red_mod_df$type,
+          leg_lbl = "type", y_limits = c(0,130), y_breaks = seq(0, 450, 20))
+```
+
+We see the same pattern as before in the reds, high and low ratings associated with low bound SO2, maybe indicating less work needed and less work done that was needed, respectively.
+
+In whites, a similar shape remains, only the trend is more decidedly negative. Yes, 4s are lower than 5s on average, but 4s' median bound SO2 is significantly higher than 7s and 8s.
+
+This is curious to me. As a group, compared to higher ratings (which is basically all other ratings), white 4s have less total SO2 added, less unused free SO2 at the end, and maybe more used up bound SO2 at the end than the highest rated wines. So, loosely speaking, 4s burned through proportionately more SO2 than other wines. Did they ferment longer or faster? hotter? Was there more "work" for SO2 to do in these wines, like more oxygen or unwanted microbes?
+
+Perhaps using less SO2 is a gamble; in an effort to produce a more natural wine with less SO2, you run the risk of wild yeasts and bacteria growing rampant, using up the little SO2 you've added and exceeding its capacity to further control the unwanted microbes. Other preservatives, like citric and tartaric acids, may be limited in their capacity to mitigate, especially in whites where you don't want too much of these acids. Corroboration for this idea is that volatile acidity ("vinegar") is negatively associated with quality ratings, and it is a product of unwanted microbial growth.
+
+I'll return to this in the multivariate section. Let's look at sulphates now.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = wine_df, aes(x = sulphates, y = qual, color = type)) +
+  geom_jitter(alpha = .2, size = 1) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth(color = 'blue') + geom_smooth() +
+  scale_y_continuous(breaks = seq(3, 9, 1)) +
+  scale_x_continuous(limits = c(0.2, 1.25), breaks = seq(0, 1.25, 0.1))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'sulphates',
+          x_lbl = 'quality', y_lbl = 'sulphates', pt_color = wht_mod_df$type,
+          leg_lbl = "type", jit_h = 0, x_breaks = seq(3, 9, 1),
+          y_limits = c(0.2, 1.25), y_breaks = seq(0, 1.25, 0.1))
+jbv_trend(data = red_mod_df, x = 'quality', y = 'sulphates',
+          x_lbl = 'quality', y_lbl = 'sulphates', pt_color = red_mod_df$type,
+          leg_lbl = "type", jit_h = 0, x_breaks = seq(3, 9, 1),
+          y_limits = c(0.2, 1.25), y_breaks = seq(0, 1.25, 0.1))
+```
+
+Sulphates in reds show a positive association with quality, the opposite of measures of sulfur dioxide. Why? Is this a measure of how much work was available to sulphates to do in the first place, and thus a measure of the starting must quality and fermentation conditions? Is it an indicator of the kind of red grape?
+
+There may be some clustering at intervals as well.
+
+## Free SO2 to bound SO2
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = wine_df,
+       aes(y = free.sulfur.dioxide, x = bound.SO2, color = type)) +
+  geom_jitter(alpha = .2, size = 1) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth(color = 'blue') + geom_smooth() +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 5)) +
+  scale_x_continuous(limits = c(0, 250), breaks = seq(0, 250, 20))
+```
+
+There's a curvature in the association in whites, and in reds if you limit the scale to an appropriate range, which suggests to me there may indeed be a small class of wines that burned through a higher percentage of their SO2, converting more free SO2 into bound SO2.
+
+## Sulphates to free SO2
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = wine_df,
+       aes(x = free.sulfur.dioxide, y = sulphates, color = type)) +
+  geom_jitter(alpha = .2, size = 1) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth(color = 'blue') + geom_smooth() +
+  scale_y_continuous(limits = c(0.2, 1.25), breaks = seq(0, 1.25, 0.1)) +
+  scale_x_continuous(limits = c(0, 150))
+```
+
+This ratio and free SO2 to bound SO2 may aid classification of whites and reds.
+
+## Chlorides and quality
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = wine_df, aes(x = chlorides, y = qual, color = type)) +
+  geom_jitter(alpha = .2, size = 1, width = 0) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth(color = 'blue') + geom_smooth() +
+  scale_y_continuous(breaks = seq(3, 9, 1)) +
+  scale_x_continuous(limits = c(0, 0.2), breaks = seq(0, 0.2, 0.02))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'chlorides',
+          x_lbl = 'quality', y_lbl = 'chlorides', pt_color = wht_mod_df$type,
+          leg_lbl = "type", jit_h = 0, x_breaks = seq(3, 9, 1),
+          y_limits = c(0, 0.35), y_breaks = seq(0, 0.35, 0.025))
+jbv_trend(data = red_mod_df, x = 'quality', y = 'chlorides',
+          x_lbl = 'quality', y_lbl = 'chlorides', pt_color = red_mod_df$type,
+          leg_lbl = "type", jit_h = 0, x_breaks = seq(3, 9, 1),
+          y_limits = c(0, 0.35), y_breaks = seq(0, 0.35, 0.025))
+```
+
+There's a slight negative association with a lot of outliers (many reds are cut out here).
+
+We see a hint of bifurcation in white 8s again, at around 0.05 g. Does this coincide with the bifurcation in white 7s and 8s that we see in sugar and alcohol?
+
+With such a broad upper outlier range, do they represent a separate style that follows a different pattern? Let's check that using the factor I created.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plt_lst =
+  get_proto_spline_lst(data = wht_mod_df, x = 'chlorides', y = 'qual',
+                       l_col = 'wht.chlor', x_lbl = 'chlorides',
+                       y_lbl = 'qual', pt_color = 'blue', jit_h = 0.45,
+                       jit_w = 0, y_limits = c(3, 8))
+grid.arrange(grobs = plt_lst, ncol = 2)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plt_lst =
+  get_proto_spline_lst(data = red_mod_df, x = 'chlorides', y = 'qual',
+                       l_col = 'red.chlor', x_lbl = 'chlorides',
+                       y_lbl = 'qual', pt_color = 'red', jit_h = 0.45,
+                       jit_w = 0, y_limits = c(3, 8))
+grid.arrange(grobs = plt_lst, ncol = 2)
+```
+
+It looks like this might help modify the chloride coefficient at least when constructing a linear regression, maybe without needing to remove all those outlying observations that may otherwise hold useful information in their other variables.
+
+I want to see if chloride outliers associate differently than the main data points with other variables.
+
+```{r echo=FALSE}
+y_lst =
+  list('fixed.acidity', 'volatile.acidity', 'citric.acid', 'residual.sugar',
+       'free.sulfur.dioxide', 'total.sulfur.dioxide', 'density', 'sulphates',
+       'alcohol')
+
+pair_scats_lst =
+  get_pair_scats(data = wine_df, x_str = 'chlorides', y_lst = y_lst,
+                 size = 0.1)
+grid.arrange(grobs = pair_scats_lst)
+```
+
+In some cases, high chlorides are only associated with a limited range in the y variable. This may be telling. For instance, high chlorides are associated with low residual sugar, as well as with low alcohol.
+
+Let's look at it by wine type. First whites, then reds.
+
+```{r echo=FALSE}
+pair_scats_lst = get_pair_scats(data = wht_mod_df, x = 'chlorides',
+                                y_lst = y_lst, size = 0.1)
+grid.arrange(grobs = pair_scats_lst)
+```
+
+```{r echo=FALSE}
+pair_scats_lst = get_pair_scats(data = red_mod_df, x = 'chlorides',
+                                y_lst = y_lst, size = 0.1)
+grid.arrange(grobs = pair_scats_lst)
+```
+
+Chloride upper outliers are more tightly associated with the mid-range of fixed acidity in whites than in reds.
+
+White chloride outliers aren't associated with the low end of the citric acid range.
+
+High chloride levels cluster around low sugar levels in both reds and whites, and in alcohol.
+
+Several of the rest have looser associations.
+
+Let's finish up bivariate analysis with density.
+
+## Density
+
+Let's just take a big picture here, starting with whites, then reds.
+
+```{r echo=FALSE}
+y_lst = y_lst[y_lst != 'density']
+y_lst = append(x = y_lst, values = 'chlorides')
+
+pair_scats_lst =
+  get_pair_scats(data = wht_mod_df, x_str = 'density', y_lst = y_lst,
+                 size = 0.1)
+grid.arrange(grobs = pair_scats_lst)
+```
+
+```{r echo=FALSE}
+pair_scats_lst =
+  get_pair_scats(data = red_mod_df, x_str = 'density', y_lst = y_lst,
+                 size = 0.1)
+grid.arrange(grobs = pair_scats_lst)
+```
+
+Part of the reason density is less correlated to sugar in reds than in whites is that there's a narrower range of sugar in reds for that to play out. But, we see a lower correlation between density and alcohol in reds as well, where there's not a big difference in alcohol levels from whites. This may due to the fact that the tartaric acid ranges into higher levels in reds and is thus more able to affect density in parallel to sugar and alcohol.
+
+Citric acid is also more highly correlated to density in reds than in whites, but the range of citric acid is roughly the same in both types. Thus, I'm guessing that citric acid's correlation to density in reds is derivative of citric acid's association with tartartic acid.
+
+Similarly, I'm guessing density's correlation to quality ratings is largely derivative of its correlation to other key variables (i.e. alcohol, sugar, and tartaric acid). But, let's take a quick look at density and quality. Mouthfeel matters a lot, and there may be hidden variables contributing to density.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = wine_df, aes(x = density, y = qual, color = type)) +
+  geom_jitter(alpha = .2, size = 1) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth(color = 'blue') + geom_smooth() +
+  scale_y_continuous(breaks = seq(3, 9, 1)) +
+  scale_x_continuous(limits = c(0.996, 1.005),
+                     breaks = seq(0.99, 1.005, 0.001))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'density',
+          x_lbl = 'quality', y_lbl = 'density', pt_color = wht_mod_df$type,
+          leg_lbl = "type", y_limits = c(0.995, 1.004),
+          y_breaks = seq(0.99, 1.005, 0.001), jit_h = 0)
+jbv_trend(data = red_mod_df, x = 'quality', y = 'density',
+          x_lbl = 'quality', y_lbl = 'density', pt_color = red_mod_df$type,
+          leg_lbl = "type", y_limits = c(0.995, 1.004),
+          y_breaks = seq(0.99, 1.005, 0.001), jit_h = 0)
+```
+
+There are no missing or non-finite values in this set, but R has removed about half the observations here as if they were missing or non-finite. I have no idea why.
+
+That said, it appears tasters preferred thicker whites. It's hard to say anything about reds.
+
+<a name="bi_analysis"></a>
+
+# Bivariate Analysis
+
+<a href="#contents">Back to Contents.</a>
+
+### Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in the dataset?
+
+See above for more detailed analysis.
+
+In general, tasters tended to prefer boozier wines, both red and white. They also tended to prefer less vinegary wines, especially reds.
+
+One notable lead is that several variables (chlorides, sugar, citric acid, alcohol) split wines into two or more groups. This suggests that there may be multiple styles of Vinho Verde within each type (red and white). This may be connected to different grape varieties, wine-making methods, years, etc., all of which are hidden in this data.
+
+Bifurcation occurs among the best wines in alcohol levels in whites, sugar levels in whites, chloride levels in whites, and citric acid levels in reds; the best wines most often either have high or low levels but not medium-low levels.
+
+Also, there were bumps in quality at particularly high sugar levels and at particularly low levels of alcohol, which may or may not be insignificant and may or may not be related. These levels are worth paying attention to.
+
+Acid structure and SO2 levels and proportions not only play a role in quality ratings, they also help distinguish reds from whites.
+
+### Did you observe any interesting relationships between the other features (not the main feature(s) of interest)?
+
+The interaction of sugar and alcohol levels creates several possibly distinct groups of wines.
+
+Proportions of SO2 levels may indicate various fermentation rates.
+
+### What was the strongest relationship you found?
+
+As far as relationships to quality ratings, alcohol was the strongest, if moderate at ~ 0.45 (Pearson's R).
+
+As far as between any two variables that weren't related by definition (e.g. total SO2 and bound SO2), residual sugar and density in whites had a correlation of 0.84, but it was only 0.36 in reds, which had higher acid and chloride levels also driving density.
+
+<a name="multi_plots"></a>
+
+# Multivariate Plots Section
+
+<a href="#contents">Back to Contents.</a>
+
+## Sugar, alcohol, and quality
+
+First, I want to look at those "bumps" in quality ratings in whites around 14 grams of sugar and 9% alcohol to see if they coincide.
+
+```{r echo=FALSE, warning=FALSE}
+alc_bump_set = wine_df[wine_df$alcohol >= 8.7 & wine_df$alcohol <= 9.1, ]
+sug_bump_set = wine_df[wine_df$residual.sugar >= 12.6 &
+                         wine_df$residual.sugar <= 15.5, ]
+alph = .5
+alc_jit = .03
+sug_jit = .02
+qual_jit = .4
+
+
+plt1_wht = basic_scatter(data = alc_bump_set[alc_bump_set$type == 'white', ],
+             x = 'residual.sugar', y = 'alcohol', x_limits = c(0, 23),
+             jit_color = alc_bump_set$quality[alc_bump_set$type == 'white'],
+             x_lbl = 'residual.sugar', y_lbl = 'alcohol', leg_lbl = 'quality',
+             jit_w = sug_jit, jit_h = alc_jit, alpha = alph, reg_lines = F)
+
+plt2_wht = basic_scatter(data = sug_bump_set[sug_bump_set$type == 'white', ],
+             y = 'residual.sugar', x = 'alcohol',
+             jit_color = sug_bump_set$quality[sug_bump_set$type == 'white'],
+             y_lbl = 'residual.sugar', x_lbl = 'alcohol', leg_lbl = 'quality',
+             jit_w = alc_jit, jit_h = sug_jit, alpha = alph, reg_lines = F)
+
+plt3_wht = basic_scatter(data = sug_bump_set[sug_bump_set$type == 'white', ],
+             x = 'residual.sugar', y = 'alcohol',
+             jit_color = sug_bump_set$quality[sug_bump_set$type == 'white'],
+             x_lbl = 'residual.sugar', y_lbl = 'alcohol', leg_lbl = 'quality',
+             jit_w = sug_jit, jit_h = alc_jit, alpha = alph, reg_lines = F)
+
+plt4_wht = basic_scatter(data = alc_bump_set[alc_bump_set$type == 'white', ],
+             y = 'residual.sugar', x = 'alcohol', y_limits = c(0, 23),
+             jit_color = alc_bump_set$quality[alc_bump_set$type == 'white'],
+             y_lbl = 'residual.sugar', x_lbl = 'alcohol', leg_lbl = 'quality',
+             jit_w = alc_jit, jit_h = sug_jit, alpha = alph, reg_lines = F)
+
+grid.arrange(plt1_wht, plt2_wht, plt3_wht, plt4_wht)
+```
+
+Higher ratings are more closely related to the tight sugar "bump set" than the alcohol "bump set," though both are pronounced. And, the intersection of the two (low alcohol and relatively high sugar) produces the highest ratings.
+
+This, however, is only one marked association between sugar-to-alcohol ratios and quality ratings. Here's the full range of each variable:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = wht_mod_df,
+       aes(x = residual.sugar, y = alcohol)) +
+  geom_jitter(alpha = .4, position = position_jitter(w = 0.05, h = 0.05),
+              size = 1, aes(color = quality)) +
+  scale_y_continuous(breaks = seq(8, 14, 1)) +
+  scale_x_continuous(limits = c(0, 20), breaks = seq(0, 20, 2))
+
+ggplot(data = wht_mod_df,
+       aes(x = residual.sugar, y = alcohol)) +
+  geom_jitter(alpha = .4, position = position_jitter(w = 0.05, h = 0.05),
+              size = 1, aes(color = quality, shape = sugar)) +
+  scale_y_continuous(breaks = seq(8, 14, 1)) +
+  scale_x_log10()
+```
+
+The tight cluster of highly rated low-alcohol, sweeter wines sits apart from the broader swath of favored wines across the top and left.
+
+## Other bifurcators
+
+In addition to sugar and alcohol, what about the other "bifurcating" variables, citric acid and chlorides?
+
+### Chlorides in whites
+
+Chlorides seemed to split highly rated whites at about 0.05 grams, so here's another look:
+
+```{r echo=FALSE, warning=FALSE}
+ggplot(data = wht_mod_df[wht_mod_df$quality > 3 & wht_mod_df$quality < 9, ],
+      aes(x = alcohol, y = chlorides)) +
+  geom_jitter(alpha = .25, position = position_jitter(w = 0.05, h = 0.0005),
+              aes(color = wht.chlor), size = 0.75) +
+  scale_y_continuous(limits = c(0, 0.1)) +
+  facet_wrap(~ quality)
+```
+
+(Chloride values are limited to below 0.100 grams.)
+
+The bifurcation that chlorides creates appears so slight that you might write it off as an illusion. That said, the previously noted "bump set" cluster of high-rated, low-alcohol whites sits neatly atop the 0.050-gram mark, with the common cluster centered below the mark. Among the best wines, elevated salt at about 0.05 grams does seem to "make up for" low alcohol levels.
+
+That begs the question of how sugar interacts with chlorides, because sugar so clearly delineated the "bump set."
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = wht_mod_df[wht_mod_df$quality > 3 & wht_mod_df$quality < 9, ],
+      aes(x = alcohol, y = chlorides)) +
+  geom_jitter(alpha = .25, position = position_jitter(w = 0.05, h = 0.0005),
+              size = 0.75, aes(shape = wht.chlor)) +
+  geom_smooth(aes(linetype = sugar, color = sugar)) +
+  scale_y_continuous(limits = c(0, 0.1)) +
+  facet_wrap(~ quality)
+
+ggplot(data = wht_mod_df[wht_mod_df$quality > 3 & wht_mod_df$quality < 9
+                          & wht_mod_df$residual.sugar < 23, ],
+      aes(x = alcohol, y = chlorides)) +
+  geom_jitter(alpha = .25, position = position_jitter(w = 0.05, h = 0.0005),
+              size = 0.75, aes(color = residual.sugar, shape = wht.chlor)) +
+  scale_y_continuous(limits = c(0, 0.1)) +
+  facet_wrap(~ quality)
+
+ggplot(data = wht_mod_df[wht_mod_df$quality > 3 & wht_mod_df$quality < 9, ],
+      aes(x = residual.sugar, y = chlorides)) +
+  geom_jitter(alpha = .25, position = position_jitter(w = 0.05, h = 0.0005),
+              size = 0.75, aes(color = alcohol, shape = wht.chlor)) +
+  scale_y_continuous(limits = c(0, 0.1)) +
+  scale_x_log10() +
+  facet_wrap(~ quality)
+```
+
+The cluster is visible with sugar on the x axis and alcohol as the color, but it stands apart more with alcohol on the x axis.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = wht_mod_df[wht_mod_df$quality > 3 & wht_mod_df$quality < 9, ],
+      aes(x = quality, y = chlorides)) +
+  geom_jitter(alpha = .3, position = position_jitter(w = 0.45, h = 0.0005),
+              size = 1, aes(color = alcohol, shape = wht.chlor)) +
+  geom_line(stat = 'summary', fun = mean, aes(group = 1))+
+  scale_y_continuous(limits = c(0, 0.1))
+
+ggplot(data = wht_mod_df[wht_mod_df$quality > 3 & wht_mod_df$quality < 9
+                          & wht_mod_df$residual.sugar < 23, ],
+      aes(x = quality, y = chlorides)) +
+  geom_jitter(alpha = .3, position = position_jitter(w = 0.45, h = 0.0005),
+              size = 1, aes(color = residual.sugar, shape = wht.chlor)) +
+  geom_line(stat = 'summary', fun = mean, aes(group = 1))+
+  scale_y_continuous(limits = c(0, 0.1))
+```
+
+There appear to be two distinct styles of white that many attempt. And, fewer pull off the sweeter style exceptionally well. Chlorides may play a small role in success, as may other factors.
+
+Moving on.
+
+### Citric acid in reds
+
+Citric acid seemed to bifurcate highly rated reds at 0.25 grams. How does it interact with alcohol?
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = red_mod_df, aes(x = quality, y = citric.acid)) +
+  geom_jitter(alpha = .4, position = position_jitter(w = 0.45, h = 0),
+              aes(color = alcohol)) +
+  geom_boxplot(notch = T, notchwidth = .1, varwidth = T, alpha = 0) +
+  geom_violin(alpha = 0) +
+  geom_line(stat = 'summary', fun = mean, aes(group = 1)) +
+  geom_smooth(method = 'lm', color = 'yellow', fullrange = T) +
+  scale_y_continuous(limits = c(0, 1))
+
+ggplot(data = red_mod_df, aes(x = alcohol, y = citric.acid)) +
+  geom_jitter(alpha = .4, position = position_jitter(w = 0.05, h = 0),
+  aes(color = quality)) +
+  scale_y_continuous(limits = c(0, 1))
+
+ggplot(data = red_mod_df, aes(x = alcohol, y = citric.acid)) +
+  geom_jitter(alpha = .25, position = position_jitter(w = 0.05, h = 0)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  geom_smooth(method = "lm", color = "yellow") +
+  facet_wrap(~ quality)
+```
+
+Citric acid bifurcation is mirrored among reds with higher alcohol, as it is in the best reds. But, that is mostly attributable to the positive correlation between alcohol and quality ratings.
+
+Mostly, what we see is that the best reds tend to have moderate to high alcohol and high citric acid, or less often, low citric acid. Mediocre and poor reds center more on low alcohol and, to a lesser extent, low to median citric acid.
+
+## Alcohol and its weak correlations
+
+Alcohol, the strongest predictor of quality ratings, is not correlated at all to acids and SO2s. These might provide the informational "secret sauce" that boosts alcohol's predictive power.
+
+### Alcohol, acids, and quality ratings in reds
+
+In the interest of wrapping up, I'll skip SO2s and whites.
+
+We already covered citric acids and alcohol in reds. Here's tartaric acid, or fixed acidity.
+
+```{r echo=FALSE, message=FALSE}
+ggplot(data = red_mod_df, aes(x = quality, y = fixed.acidity)) +
+  geom_jitter(alpha = .4, position = position_jitter(w = 0.45, h = 0),
+              aes(color = alcohol)) +
+  geom_boxplot(notch = T, notchwidth = .1, varwidth = T, alpha = 0) +
+  geom_violin(alpha = 0) +
+  geom_line(stat = 'summary', fun = mean, aes(group = 1))
+
+ggplot(data = red_mod_df, aes(x = alcohol, y = fixed.acidity)) +
+  geom_jitter(alpha = .4, position = position_jitter(w = 0.05, h = 0),
+  aes(color = quality))
+
+ggplot(data = red_mod_df, aes(x = alcohol, y = fixed.acidity)) +
+  geom_jitter(alpha = .25, position = position_jitter(w = 0.05, h = 0)) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  facet_wrap(~ quality)
+```
+
+A loose negative correlation between alcohol and tartaric acid emerges in the best and worst wines, with an upward shift along the tartaric acid axis for the best wines. And, the cluster of the worst and mediocre reds centers in the low-alcohol and low-tartaric region, whereas the cluster of the best reds centers higher on both axes. That is, tasters didn't tend to find many wines that were neither tart nor boozy very impressive.
+
+What about acetic acid, vinegar?
+
+```{r echo=FALSE}
+ggplot(data = red_mod_df, aes(x = quality, y = volatile.acidity)) +
+  geom_jitter(alpha = .4, position = position_jitter(w = 0.45, h = 0),
+              aes(color = alcohol)) +
+  geom_line(stat = 'summary', fun = mean, aes(group = 1))
+
+ggplot(data = red_mod_df, aes(x = alcohol, y = volatile.acidity)) +
+  geom_jitter(alpha = .4, position = position_jitter(w = 0.05, h = 0),
+  aes(color = quality))
+
+ggplot(data = red_mod_df, aes(x = alcohol, y = volatile.acidity)) +
+  geom_jitter(alpha = .25, position = position_jitter(w = 0.05, h = 0)) +
+  geom_smooth(method = "lm", color = "yellow") +
+  facet_wrap(~ quality)
+```
+
+Unsurprisingly, we see the opposite here. The cluster "migrates" down and to the right as ratings increase.
+
+## SO2
+
+Let's look at the compound variable, f_by_b.SO2 (free SO2 divided by bound SO2).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = wine_df, aes(x = f_by_b.SO2, y = qual, color = type)) +
+  geom_jitter(alpha = .2, size = 1, width = 0) +
+  geom_smooth(method = 'lm', color = 'yellow') +
+  geom_smooth(color = 'blue') + geom_smooth() +
+  scale_y_continuous(breaks = seq(3, 9, 1)) +
+  scale_x_continuous(limits = c(0, 2), breaks = seq(0, 3, 0.2))
+```
+
+A slightly positive association that tightens at the low end.
+
+There's an interesting stack of red observations at 1 mg, which we see to a lesser degree at half-mg intervals. Does this correspond to the clusters at intervals we see in free SO2 and bound SO2? Does it correspond to the clusters at intervals we see in citric acid?
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+jbv_trend(data = wht_mod_df, x = 'quality', y = 'f_by_b.SO2',
+          x_lbl = 'quality', y_lbl = 'f_by_b.SO2', jit_h = 0,
+          pt_color = wht_mod_df$type, leg_lbl = "type")
+jbv_trend(data = red_mod_df, x = 'quality', y = 'f_by_b.SO2',
+          x_lbl = 'quality', y_lbl = 'f_by_b.SO2', jit_h = 0,
+          y_limits = c(0, 2.5), pt_color = red_mod_df$type, leg_lbl = "type")
+
+print("Pearson's R of quality correlated to (free SO2 divided by bound SO2):")
+print("Whites:")
+cor(wht_mod_df$qual, wht_mod_df$f_by_b.SO2)
+print("Reds:")
+cor(red_mod_df$qual, red_mod_df$f_by_b.SO2)
+```
+
+While a very weak correlation, there is a much more straight-forward positive association with ratings in whites that brings 4s in line with the trend. Reds are more significantly different across quality ratings. Though the sparse 4-rated reds category is still out of sync, it's less significantly so. The 3s and 9s can be ignored.
+
+This may help predict ratings. Maybe if you're expecting a certain amount of necessary microbial regulation and want to make sure you have high enough availability to achieve the rate of regulation you want, you don't add just the right amount of SO2 to use it all up, you add more than you need. Then maybe you halt fermentation when you've reached a target like 1:1 free:bound SO2, or 1:1.5, etc.
+
+A lower ratio generally predicts a lower rating. This suggests to me that maybe these wines burned through their free SO2 with run-away fermentation due to some other factors, and/or that makers didn't add enough to control the process well, and/or that they waited too long to halt fermentation.
+
+Maybe the target ratio you choose depends on your overall strategy, including the amount of other preservatives and fermentation aids you use.
+
+That would be fun to look into, but it is definitely time to wrap this exploration up.
+
+<a name="multi_analysis"></a>
+
+# Multivariate Analysis
+
+<a href="#contents">Back to Contents.</a>
+
+### Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+
+See below.
+
+### Were there any interesting or surprising interactions between features?
+
+There aren't a lot of high ratings with low alcohol and low sugar, and there aren't a lot of low ratings with high alcohol and high sugar.
+
+Boozier is generally better, but sweetness can make up for a lack of alcohol. And, the less sweet it is, the boozier it better be. There is a smaller cluster of low-alcohol, sweeter whites that makers seem to attempt, and gets high ratings when it works.
+
+Also, too high or too low citric acid (about < 0.12 and > 0.63) is a good way to get mediocre ratings or worse. High citric acid is associated with low alcohol and high sugar, probably because it inhibits fermentation.
+
+A rule of thumb (worth investigating in further research) might be that if you want to stray from the safe bet of high-alcohol Vinho Verde that allows for a broader range of sugar and citric acid among high-rated wines, and if you want to shoot instead for that "sweet spot" of low alcohol and high sugar, without tasting like a lemon drop or risking unwanted microbial growth, you're going to want to curb your fermentation without relying too much on citric acid to do so. Though, you do want a modest amount of citric acid.
+
+A way to do that might simply be to bottle sooner or lower temperature, but using other additives might help as well. You're probably going to want to be on top of your SO2 game.
+
+**Whoops, I somehow lost the plots associated with these last bits of analysis, and I'm not going to make them again, but it's still an interesting finding:**
+
+A high proportion of sulphates compared to total SO2 is associated with lower ratings, while highly rated wines in the "sweet" spot have a low proportion. The presence of lot of sulphates may indicate conditions (e.g. temperature?) that somehow prevented them from properly activating and regulating the fermentation, leading to runaway fermentation. We find evidence of this in the association of proportionally high sulphates with high alcohol, low sugar, and low ratings. Things did not go as planned in these wines; if they had achieved their intended structure, they may have received better ratings, *and* (a big and) they may have landed in that sweet spot. (The inverse is true about bound SO2 and tartaric acid, indicating the same principle, though I didn't include them in this plot, since it is harder to discern at this scale.)
+
+This is curious to me. As a group, compared to higher ratings (which is basically all other ratings), white 4s have less total SO2 added, less unused free SO2 at the end, and maybe more used up bound SO2 at the end than the highest rated wines. So, loosely speaking, 4s burned through proportionately more SO2 than other wines. Did they ferment longer or faster? hotter? Was there more "work" for SO2 to do in these wines, like more oxygen or unwanted microbes?
+
+Perhaps using less SO2 is a gamble; in an effort to produce a more "natural" wine with less SO2, you run the risk of wild yeasts and bacteria growing rampant, using up the little SO2 you've added and exceeding its capacity to further control inhibit the unwanted microbes, which are then free to grow unchecked. Other preservatives, like citric and tartaric acids, may be limited in their capacity to mitigate, especially in whites where you don't want too much of these acids. Corroboration for this idea is that volatile acidity ("vinegar") is negatively associated with quality ratings, and it is a product of unwanted microbial growth.
+
+------
+
+<a name="final_plots"></a>
+
+# Final Plots and Summary
+
+<a href="#contents">Back to Contents.</a>
+
+### Citric acid over quality ratings in reds, with alcohol: Fenced Jitterbox Violin
+
+```{r Plot One, echo=FALSE, message=FALSE}
+ggplot(data = red_mod_df, aes(x = quality, y = citric.acid)) +
+  geom_jitter(mapping = aes(color = alcohol), alpha = .5, size = 1,
+              position = position_jitter(h = 0)) +
+  geom_boxplot(notch = T, notchwidth = .1, varwidth = T, alpha = 0) +
+  geom_violin(alpha = 0) +
+  geom_line(stat = 'summary', fun = quantile,
+            fun.args = list(probs = .9),
+            linetype = 2, aes(group = 1)) +
+  geom_line(stat = 'summary', fun = mean, aes(group = 1)) +
+  geom_line(stat = 'summary', fun = quantile,
+            fun.args = list(probs = .1),
+            linetype = 2, aes(group = 1)) +
+  labs(
+    title = "Citric Acid over Quality Ratings in Reds, with Alcohol",
+    subtitle = "Fenced Jitterbox Violin",
+    caption = "Red Vinho Verdes over three years.",
+    color = "Alcohol (%)",
+    x = "Quality Rating",
+    y = "Citric Acid (g / dm^3)"
+  )
+```
+
+Here's a compound plot style I call the Fenced Jitterbox Violin (Fenced JBV), mapping citric acid levels to quality ratings in red Vinho Verdes. It has rapidly become a favorite when I have many points and at least one factor variable.
+
+The Fenced JBV can be used with a discrete factor on the x axis, and a discrete or continuous variable on the y axis. Each layer, though providing information that overlaps with the other layers, provides unique information.
+
+The boxplots convey the IQR, outliers, significance of difference between medians (overlapping notches indicate medians that differ insignificantly), and the number of observations in each category relative to the overall set. The widths of the violin plots add to that a general sense of the distribution of each category by corresponding to the number of observations along the y axis relative to each category alone.
+
+The middle line connects category means; the top line connects the 90th percentiles; and, the bottom line connects the 10th percentiles.
+
+The points potentially show interesting features that are hidden in the summary plots, such as the quarter-gram clusters seen in this plot. Jitter can be adjusted to tune into potential features like this, such as setting the height jitter to 0 as in this plot.
+
+The points can also carry further variables with color, shape, alpha, and size. But, I recommend only using color, and maybe shape if it's strongly associated with distinct clusters or levels. The statistical nature of the plot calls for a large number of points in order to be meaningful, so the other aesthetics (alpha and size) will probably lead to overplotting and confusion if used to encode variables, but they can be set to constants to reduce and mitigate overplotting.
+
+In this plot, clustering at quarter-gram intervals suggests to me a tandem possible explanations. Are there target thresholds that act as shortcuts to indicate fermentation progress? Do they correspond to certification or regulatory limits? Did many of the winemakers use less precise instruments while monitoring progress than the instruments used when collecting this data? Did many winemakers simply ignore this variable or not stick to such a round threshold?
+
+Also, there's a striking bifurcation of 7-rated reds right at the 0.25-gram mark where wines cluster at lower levels --  maybe a general dissipation of the quarter-gram clusters overall. There aren't enough 8-rated reds to say whether the pattern continues. This uncanny feature suggests to me that there may be multiple wine styles within reds, perhaps due to different grape varieties and/or due to different processing methods, or maybe just different years. It also suggests to me that maybe those who used the quarter-gram threshold lacked the same degree of finesse possessed by those who may have used a more dynamic method to monitor citric acid.
+
+### White quality ratings across alcohol and residual sugar: over three years
+
+```{r Plot Two, echo=FALSE, warning=FALSE}
+ggplot(data = wht_mod_df,
+       aes(x = residual.sugar, y = alcohol)) +
+  geom_jitter(alpha = .3, position = position_jitter(w = 1/20, h = 0.05),
+              size = 0.9, aes(color = quality)) + #, shape = sugar)) +
+  geom_vline(xintercept = 3) +
+  geom_vline(xintercept = 5.5) +
+  geom_vline(xintercept = 9.5) +
+  geom_vline(xintercept = 16.5) +
+  scale_y_continuous(breaks = seq(8, 14, 1)) +
+  scale_x_continuous(limits = c(0, 24), breaks = seq(0, 24, 2)) +
+  # scale_x_log10(breaks = c(0, 1, 2, 4, 8, 16, 32, 64)) +
+  labs(
+    title = "White Quality Ratings Across Alcohol and Residual Sugar",
+    subtitle = "Over Three Years",
+    caption = "I intuitively set vertical lines based on sugar's potentially
+    polymodal distribution that happens to resemble a log10 scale.",
+    x = "Sugar (g / dm^3)",
+    y = "Alcohol (% ABV)",
+    shape = "Sugar",
+    color = "Quality"
+  )
+```
+
+This plot shows a few interesting things about white Vinho Verdes in this time period.
+
+Two clusters emerge: low-sugar wines and relatively high-sugar wines. The high-sugar range is much broader and may cover more than one style or variety itself. Slight polymodality emerges in this range with modes centered in the ranges I highlighted with vertical lines. The intervals of these subranges roughly coincide with a log10 scale. Though placing the entire sugar axis on a log10 scale bears this out, some distinction is lost between these possible smaller clusters.
+
+You also see faint, roughly horizontal swathes of clustering that suggests polymodality in alcohol as well. Together, sugar and alcohol clustering suggest a sort of half-grid of potential wine styles, fermentation methods, grape varieties, and/or vintages, all of which are hidden variables in this data set.
+
+Alcohol, the strongest correlation to quality ratings, colors the top of the plot lighter with higher ratings.
+
+There is one notable exception: the tight cluster of high ratings at about 9% ABV and 14 grams sugar, the "bump set." There is a generally negative association between alcohol and sugar, with the trend among higher wines shifted up along the alcohol axis, and the bump set does fall in line with this trend. That said, the bump set is a bright island in a dark sea. A little extra sugar does seem to help make up for a lack of alcohol in some cases, but not reliably. Hitting the sweet spot might be a bull's eye many aimed for but few hit.
+
+What makes that spot work? Is it a hidden variable, like grape variety? Does it coincide with any other variables in our data?
+ 
+
+### Sugar, salt, alcohol in whites: quality
+
+```{r Plot Three, echo=FALSE, warning=FALSE}
+ggplot(data = wht_mod_df[wht_mod_df$quality < 9
+                         & wht_mod_df$residual.sugar < 23, ],
+      aes(x = alcohol, y = chlorides)) +
+  geom_jitter(alpha = .25, position = position_jitter(w = 0.05, h = 0.0005),
+              size = 0.9, aes(color = sugar, shape = wht.chlor)) +
+  scale_y_continuous(limits = c(0, 0.1)) +
+  facet_wrap(~ quality) +
+  labs(
+    title = "Sugar, Salt, Alcohol in Whites: Quality",
+    caption = "I intuitively set shape levels based on a potentially
+    polymodal distribution that happens to resemble a log10 scale.",
+    x = "Alcohol (% ABV)",
+    y = "Sodium Chloride (g / dm^3)",
+    color = "Sugar (g / dm^3)",
+    shape = "NaCl Outliers"
+  )
+```
+
+Here, you can watch the overall cluster "slide" down the chloride scale and up the alcohol scale with higher ratings. It also begins to separate into two clusters in the higher ratings: a "bump set" of sweet wines with low alcohol and a standard set of relatively high-alcohol, low-sugar wines.
+
+While fewer seem to attempt the bump set than the standard set, many do, and many fail to impress. Chloride levels seem to set the winners apart. The chlorides variable has relatively many upper outliers. Wines don't rate well when they have unusually high chloride levels, especially if they're also sweet. If you want to attempt the sweet spot of the bump set, keep NaCl below about 0.063 g / dm^3, lower if you're going for a boozier wine.
+
+------
+
+<a name="reflection"></a>
+
+# Reflection
+
+<a href="#contents">Back to Contents.</a>
+
+I dove pretty deep, but certainly not as deep as I could have. I stopped short of modeling the data, as that is beyond the scope of this class and my next class is on machine learning. That said, I did a bit of classification and regression by eye, against my better judgment.
+
+R does a lot of work behind the scenes, I think in an attempt to be easier to use by a broader user base than just programmers. That's great, but it also means that there's a lot under the hood to get a hold of, and it can feel pretty sloppy or capricious at times to a new user. That said, I love all the built-in features of R Studio and R Markdown docs.
+
+New to R, I found the most technical challenges when I attempted to encapsulate processes. This was often due to unfamiliarity with all the objects idiosyncratic to each package. The package I used most wast ggplot2, and it has elegant built-in functions and grammar. Bundling and wrapping them into new functions typically introduced more work than it saved, and saved little space in proportion. This was especially true within an EDA process where noodling with parameters and layers is the game. As one LinkedIn R guru replied when asked about R runtimes compared to Python, if you're using R for automated tasks, you're often doing it wrong.
+
+As for findings, as anticipated, I found that whites and reds were different beasts, with different structures and different structural dynamics in relation to ratings. With a broader, polymodal range, sugars are more defining in whites. Acids play a more important role in reds. It should be pretty easy to reliably classify reds and whites as such.
+
+Unanticipated, but unsurprising, alcohol predicts quality ratings better than any other single variable. And, this is true of both reds and whites (r ~ 0.45), which share about the same range of alcohol levels.
+
+Also unsurprising but unanticipated, SO2 is more important in whites than in reds. This is likely because whites don't benefit as much from, nor naturally contain as much, acids as reds, so vintners must rely more heavily on SO2 to control the fermentation process. This is compounded by the higher sugar levels of many whites which is the fuel of fermentation.
+
+Both intriguing and unanticipated, citric acid clustered around quarter-gram values, but this pattern dissipated among reds of higher ratings. Are there target thresholds that act as shortcuts to indicate fermentation progress? Do they correspond to certification or regulatory limits? Did many of the winemakers use less precise instruments while monitoring progress than the instruments used when collecting this data? Did many winemakers simply ignore this variable or not stick to such a round threshold? Do winemakers with the most finesse use more dynamic methods to monitor citric acid?
+
+Given more time, I would look into this more, both within the data and by seeking out external sources.
+
+I would also look more into how sulphates interact with SO2, how they each interact with acids, sugar, alcohol, and chlorides -- especially with regard to quality ratings and type (red or white).
+
+Finally, I would certainly seek out external data or information with regard to the hidden variables that some of the clustering suggested to me. Grape variety, target wine styles, processing and fermenting methods, monitoring methods, vintage weather conditions, microclimates, soils, master brewers, wineries, appreciation standards, regulatory standards, etc. all must have something to do with physiochemical properties and quality ratings.
