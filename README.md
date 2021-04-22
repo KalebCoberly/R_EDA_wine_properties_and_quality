@@ -24,9 +24,10 @@ P. Cortez, A. Cerdeira, F. Almeida, T. Matos and J. Reis.
   Modeling wine preferences by data mining from physicochemical properties.
   In Decision Support Systems, Elsevier, 47(4):547-553. ISSN: 0167-9236.
 
-  Available at: [@Elsevier](http://dx.doi.org/10.1016/j.dss.2009.05.016)
-                [Pre-press (pdf)](http://www3.dsi.uminho.pt/pcortez/winequality09.pdf)
-                [bib](http://www3.dsi.uminho.pt/pcortez/dss09.bib)
+  Available at:
+  * [@Elsevier](http://dx.doi.org/10.1016/j.dss.2009.05.016)
+  * [Pre-press (pdf)](http://www3.dsi.uminho.pt/pcortez/winequality09.pdf)
+  * [bib](http://www3.dsi.uminho.pt/pcortez/dss09.bib)
     
             
 ### Wine references:
@@ -41,15 +42,14 @@ P. Cortez, A. Cerdeira, F. Almeida, T. Matos and J. Reis.
 
 ### R references:
 
-* https://r4ds.had.co.nz/
-* http://adv-r.had.co.nz/Style.html
-* https://adv-r.hadley.nz/
-* *Many StackOverflow posts*: https://stackoverflow.com/users/2391771/kaleb-coberly
+* [R for Data Science](https://r4ds.had.co.nz/)
+* [Advanced R](https://adv-r.hadley.nz/)
+* [Many StackOverflow posts](https://stackoverflow.com/users/2391771/kaleb-coberly)
 
 
 ### R packages:
 
-* *tidyverse*: https://www.rdocumentation.org/packages/tidyverse/versions/1.3.1
-* *gridExtra*: https://www.rdocumentation.org/packages/gridExtra/versions/2.3
-* *diptest*: https://www.rdocumentation.org/packages/diptest/versions/0.75-7
-* *GGally*: https://www.rdocumentation.org/packages/GGally/versions/1.5.0
+* [tidyverse](https://www.rdocumentation.org/packages/tidyverse/versions/1.3.1)
+* [gridExtra](https://www.rdocumentation.org/packages/gridExtra/versions/2.3)
+* [diptest](https://www.rdocumentation.org/packages/diptest/versions/0.75-7)
+* [GGally](https://www.rdocumentation.org/packages/GGally/versions/1.5.0)
