@@ -6,7 +6,7 @@ The purpose of the markdown document, and its HTML version, is to show my thinki
 
 If you're interested in wine and the data itself, I recommend skipping the narrative and skimming the plots, reading the summary sections and taking a look at the final plots.
 
-## Documents
+## Files
 
 * *dataDictionary.csv*: Variable names, units, and descriptions.
 * *tools.R*: Some basic functions I used to play with R and make plots.
