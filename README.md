@@ -44,11 +44,12 @@ P. Cortez, A. Cerdeira, F. Almeida, T. Matos and J. Reis.
 * https://r4ds.had.co.nz/
 * http://adv-r.had.co.nz/Style.html
 * https://adv-r.hadley.nz/
+* *Many StackOverflow posts*: https://stackoverflow.com/users/2391771/kaleb-coberly
 
 
 ### R packages:
 
-* tidyverse: https://www.rdocumentation.org/packages/tidyverse/versions/1.3.1
-* gridExtra: https://www.rdocumentation.org/packages/gridExtra/versions/2.3
-* diptest: https://www.rdocumentation.org/packages/diptest/versions/0.75-7
-* GGally: https://www.rdocumentation.org/packages/GGally/versions/1.5.0
+* *tidyverse*: https://www.rdocumentation.org/packages/tidyverse/versions/1.3.1
+* *gridExtra*: https://www.rdocumentation.org/packages/gridExtra/versions/2.3
+* *diptest*: https://www.rdocumentation.org/packages/diptest/versions/0.75-7
+* *GGally*: https://www.rdocumentation.org/packages/GGally/versions/1.5.0
